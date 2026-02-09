@@ -1,0 +1,20 @@
+# Build artifacts
+bin/
+target/
+
+# Cargo lock is committed for applications
+# Cargo.lock
+
+# Models (large files)
+models/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+
+# Logs
+*.log

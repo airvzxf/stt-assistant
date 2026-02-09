@@ -1,0 +1,20 @@
+# Build artifacts
+bin/
+target/
+
+# Models (large files)
+models/
+
+# Git
+.git/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+
+# Logs
+*.log

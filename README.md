@@ -1,3 +1,3 @@
-# STT Assistant | Speach To Text Assistant
+# STT Assistant | Speech To Text Assistant
 
-Speach To Text Assistant.
+Speech To Text Assistant.
