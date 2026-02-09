@@ -18,3 +18,14 @@ models/
 
 # Logs
 *.log
+
+# Temporary install directories
+*_install/
+tmp/
+
+# Arch Linux Packaging
+pkg/src/
+pkg/pkg/
+pkg/*.pkg.tar.zst
+pkg/*.pkg.tar.xz
+pkg/stt-assistant-*/

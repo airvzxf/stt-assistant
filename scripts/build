@@ -43,4 +43,5 @@ time podman run --rm \
     -c "cp /app/stt-daemon /app_out/bin/stt-daemon && cp /app/stt-client /app_out/bin/stt-client"
 
 echo "--> Done! Binaries extracted to bin/"
-echo "--> Run with: ./script/stt_ctl start"
+echo "--> To install: cd pkg && makepkg -si"
+echo "--> Or run manually: ./bin/stt-daemon"

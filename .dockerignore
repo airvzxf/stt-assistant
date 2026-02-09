@@ -1,12 +1,23 @@
 # Build artifacts
 bin/
 target/
+pkg/
 
-# Models (large files)
+# Models (large files) - Copied only if needed in Containerfile
 models/
 
 # Git
 .git/
+.gitignore
+.dockerignore
+
+# Documentation & Packaging
+README.md
+CONTRIBUTING.md
+LICENSE
+Makefile
+systemd/
+pkg/
 
 # IDE
 .vscode/

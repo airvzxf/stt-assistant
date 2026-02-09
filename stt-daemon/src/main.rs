@@ -14,8 +14,30 @@ use socket::{Command, SocketServer};
 use transcriber::Transcriber;
 
 // Config references
-const MODEL_PATH: &str = "/home/wolf/.local/share/stt-assistant/models/ggml-base.bin";
 const SOCKET_PATH: &str = "/tmp/stt-sock";
+
+fn get_model_path() -> String {
+    if let Ok(path) = std::env::var("STT_MODEL_PATH") {
+        return path;
+    }
+
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let candidates = vec![
+        format!("{}/.local/share/stt-assistant/models/ggml-base.bin", home),
+        "/usr/share/stt-assistant/models/ggml-base.bin".to_string(),
+        "/usr/local/share/stt-assistant/models/ggml-base.bin".to_string(),
+        "models/ggml-base.bin".to_string(), // Local dev
+    ];
+
+    for path in candidates {
+        if std::path::Path::new(&path).exists() {
+            return path;
+        }
+    }
+
+    // Default fallback (will probably fail later if it doesn't exist)
+    format!("{}/.local/share/stt-assistant/models/ggml-base.bin", home)
+}
 
 #[derive(PartialEq)]
 enum State {
@@ -27,26 +49,13 @@ enum State {
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    let model_path = get_model_path();
     info!("Starting STT Daemon (Host Native)...");
+    info!("Using model: {}", model_path);
 
     // 1. Initialize Components
-
-    // Audio Buffer (RingBuffer)
-    // 16kHz * 30s max = 480k samples
-    let ring = HeapRb::<f32>::new(480000);
-    let (producer, mut consumer) = ring.split();
-
-    // Audio Engine
-    let mut audio_engine = AudioEngine::new().context("Failed to init audio engine")?;
-    let sample_rate = audio_engine
-        .start(producer)
-        .context("Failed to start audio stream")?;
-    info!("Audio engine started at {} Hz", sample_rate);
-
-    // Transcriber
-    // Load model asynchronously? Whisper-rs loads synchronously.
-    // We should probably do this in a thread or just blocking at startup is fine.
-    let mut transcriber = Transcriber::new(MODEL_PATH).context("Failed to load Whisper model")?;
+    // ... rest of the code ...
+    let mut transcriber = Transcriber::new(&model_path).context("Failed to load Whisper model")?;
 
     // Socket
     let (cmd_tx, mut cmd_rx) = mpsc::channel(32);

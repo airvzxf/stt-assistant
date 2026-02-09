@@ -1,0 +1,35 @@
+name: Rust CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libasound2-dev libgtk-4-dev libgtk-4-1 build-essential cmake pkg-config
+
+    # Note: whisper-rs with cuda requires CUDA toolkit, which is heavy for standard CI.
+    # For now, we might build without cuda features or assume we just test compilation
+    # generically. However, the crate forces "cuda".
+    # We might need a self-hosted runner or use a container with CUDA.
+    # For this template, we'll try to check format and clippy at least.
+
+    - name: Format
+      run: cargo fmt --all -- --check
+
+    # Skipping full build for now as CUDA setup in GH Actions is complex/slow
+    # - name: Build
+    #   run: cargo build --verbose
