@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Ensure we are in the project root
+cd "$(dirname "$0")/.."
+
 # stt_ctl - Control script for STT Daemon and Client (Rust)
 STT_PATH="/home/wolf/.local/share/stt-assistant"
 RUST_DAEMON="${STT_PATH}/bin/stt-daemon"
@@ -36,13 +39,13 @@ start() {
 
     if [[ ! -f "${RUST_DAEMON}" ]]; then
         echo "Error: Daemon binary not found at ${RUST_DAEMON}"
-        echo "Run ./build.bash first."
+        echo "Run ./script/build first."
         exit 1
     fi
 
     if [[ ! -f "${RUST_CLIENT}" ]]; then
         echo "Error: Client binary not found at ${RUST_CLIENT}"
-        echo "Run ./build.bash first."
+        echo "Run ./script/build first."
         exit 1
     fi
 

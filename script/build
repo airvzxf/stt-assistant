@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Ensure we are in the project root
+cd "$(dirname "$0")/.."
+
 # Build script for STT Rust workspace
 IMAGE_NAME="stt-daemon:latest"
 
@@ -40,4 +43,4 @@ time podman run --rm \
     -c "cp /app/stt-daemon /app_out/bin/stt-daemon && cp /app/stt-client /app_out/bin/stt-client"
 
 echo "--> Done! Binaries extracted to bin/"
-echo "--> Run with: ./stt_ctl start"
+echo "--> Run with: ./script/stt_ctl start"
