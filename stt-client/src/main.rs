@@ -34,7 +34,7 @@ enum Commands {
 
 #[derive(Debug, Clone)]
 enum AppAction {
-    ToggleRecording(String), // "TYPE" or "COPY"
+    ToggleRecording(String, bool), // mode, is_auto_stop
     CancelRecording,
     OsdUpdate(String, String), // Text, Color
     OsdHide,
@@ -111,21 +111,27 @@ fn main() {
         // GTK Main Loop Context
         glib::MainContext::default().spawn_local(async move {
             let mut recording = false;
+            let mut current_mode = String::new();
 
             while let Ok(action) = rx.recv().await {
                 match action {
-                    AppAction::ToggleRecording(mode) => {
+                    AppAction::ToggleRecording(mode, is_auto_stop) => {
                         if !recording {
                             // START
                             recording = true;
+                            current_mode = mode;
                             osd_clone.show("● GRABANDO", "red");
                             let _ = daemon_tx.send(DaemonCommand::Start);
                         } else {
                             // STOP
                             recording = false;
-                            osd_clone.show("Procesando...", "orange");
+                            if is_auto_stop {
+                                osd_clone.show("⏳ LÍMITE ALCANZADO", "orange");
+                            } else {
+                                osd_clone.show("Procesando...", "orange");
+                            }
                             let _ = daemon_tx.send(DaemonCommand::Stop {
-                                mode,
+                                mode: current_mode.clone(),
                                 response_tx: tx_back.clone(),
                             });
                         }
@@ -144,10 +150,14 @@ fn main() {
                         }
                     }
                     AppAction::OsdUpdate(text, color) => {
-                        osd_clone.show(&text, &color);
+                        if !recording {
+                            osd_clone.show(&text, &color);
+                        }
                     }
                     AppAction::OsdHide => {
-                        osd_clone.hide();
+                        if !recording {
+                            osd_clone.hide();
+                        }
                     }
                 }
             }
@@ -170,20 +180,33 @@ async fn handle_daemon_commands(
                 // The STOP command now returns the transcription result directly
                 match SocketClient::send_command("STOP").await {
                     Ok(text) if !text.trim().is_empty() && !text.starts_with("ERROR:") => {
-                        if mode == "TYPE" {
+                        let is_auto = mode == "AUTO";
+                        if mode == "TYPE" || is_auto {
                             input::type_text(&text);
-                            let _ = response_tx.send(AppAction::OsdHide).await;
                         } else {
                             input::copy_text(&text);
+                        }
+
+                        if is_auto {
                             let _ = response_tx
                                 .send(AppAction::OsdUpdate(
-                                    "Copiado".to_string(),
-                                    "green".to_string(),
+                                    "⏳ LÍMITE ALCANZADO".to_string(),
+                                    "orange".to_string(),
                                 ))
                                 .await;
+                            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                        } else {
+                            let (msg, color) = if mode == "TYPE" {
+                                ("Escrito".to_string(), "green".to_string())
+                            } else {
+                                ("Copiado".to_string(), "green".to_string())
+                            };
+
+                            let _ = response_tx.send(AppAction::OsdUpdate(msg, color)).await;
                             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                            let _ = response_tx.send(AppAction::OsdHide).await;
                         }
+
+                        let _ = response_tx.send(AppAction::OsdHide).await;
                     }
                     Ok(text) if text.starts_with("ERROR:") => {
                         log::error!("Daemon error: {}", text);
@@ -217,16 +240,21 @@ async fn run_control_server(tx: Sender<AppAction>) -> anyhow::Result<()> {
                 match cmd.as_str() {
                     "TOGGLE_TYPE" => {
                         let _ = tx
-                            .send(AppAction::ToggleRecording("TYPE".to_string()))
+                            .send(AppAction::ToggleRecording("TYPE".to_string(), false))
                             .await;
                     }
                     "TOGGLE_COPY" => {
                         let _ = tx
-                            .send(AppAction::ToggleRecording("COPY".to_string()))
+                            .send(AppAction::ToggleRecording("COPY".to_string(), false))
                             .await;
                     }
                     "CANCEL" => {
                         let _ = tx.send(AppAction::CancelRecording).await;
+                    }
+                    "AUTO_STOP" => {
+                        let _ = tx
+                            .send(AppAction::ToggleRecording("AUTO".to_string(), true))
+                            .await;
                     }
                     _ => {}
                 }

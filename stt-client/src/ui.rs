@@ -6,6 +6,7 @@ use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 pub struct Osd {
     window: ApplicationWindow,
     label: Label,
+    provider: CssProvider,
 }
 
 impl Osd {
@@ -40,28 +41,28 @@ impl Osd {
 
         // Initial CSS
         let provider = CssProvider::new();
-        provider.load_from_data("window { background-color: black; color: white; font-weight: bold; padding: 10px; border-radius: 8px; } label { color: white; }");
+        provider.load_from_data("window { background-color: black; color: white; font-weight: bold; padding: 10px; border-radius: 8px; font-size: 14px; } label { color: white; }");
 
         let context = window.style_context();
         context.add_provider(&provider, gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION);
 
         window.set_child(Some(&label));
 
-        Self { window, label }
+        Self {
+            window,
+            label,
+            provider,
+        }
     }
 
     pub fn show(&self, text: &str, color: &str) {
         self.label.set_text(text);
 
         let css = format!(
-            "window {{ background-color: {}; color: white; font-weight: bold; border-radius: 8px; }}",
+            "window {{ background-color: {}; color: white; font-weight: bold; border-radius: 8px; font-size: 14px; }}",
             color
         );
-        let provider = CssProvider::new();
-        provider.load_from_data(&css);
-
-        let context = self.window.style_context();
-        context.add_provider(&provider, gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION);
+        self.provider.load_from_data(&css);
 
         self.window.present();
     }

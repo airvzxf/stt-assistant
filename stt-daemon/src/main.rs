@@ -6,7 +6,7 @@ use ringbuf::HeapRb;
 use serde::Deserialize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio::time::{Duration, sleep};
 
 mod audio;
@@ -20,6 +20,13 @@ use transcriber::Transcriber;
 
 // Config references
 const SOCKET_PATH: &str = "/tmp/stt-sock";
+const CONTROL_SOCKET: &str = "/tmp/stt-control.sock";
+
+async fn notify_client_auto_stop() {
+    if let Ok(mut stream) = UnixStream::connect(CONTROL_SOCKET).await {
+        let _ = stream.write_all(b"AUTO_STOP").await;
+    }
+}
 
 #[derive(Debug, Deserialize)]
 struct SttConfig {
@@ -275,7 +282,8 @@ async fn main() -> Result<()> {
     let mut audio_buffer: Vec<f32> = Vec::with_capacity(16000 * 30); // Linear buffer for recording
     let chunk_size = 512;
     let mut chunk_buf: Vec<f32> = Vec::with_capacity(chunk_size);
-    let mut response_tx_opt: Option<tokio::sync::oneshot::Sender<String>> = None;
+    let mut response_tx_opt: Option<oneshot::Sender<String>> = None;
+    let mut pending_result: Option<String> = None;
 
     info!("System Ready. Waiting for commands on {}", SOCKET_PATH);
 
@@ -287,14 +295,25 @@ async fn main() -> Result<()> {
                     info!("Command: START");
                     state = State::Recording;
                     audio_buffer.clear();
+                    pending_result = None;
                 }
                 Command::Stop { response_tx } => {
                     info!("Command: STOP");
-                    if state == State::Recording {
-                        state = State::Processing;
-                        response_tx_opt = Some(response_tx);
-                    } else {
-                        let _ = response_tx.send("".to_string());
+                    match state {
+                        State::Recording => {
+                            state = State::Processing;
+                            response_tx_opt = Some(response_tx);
+                        }
+                        State::Processing => {
+                            response_tx_opt = Some(response_tx);
+                        }
+                        State::Idle => {
+                            if let Some(res) = pending_result.take() {
+                                let _ = response_tx.send(res);
+                            } else {
+                                let _ = response_tx.send("".to_string());
+                            }
+                        }
                     }
                 }
                 Command::Cancel => {
@@ -302,6 +321,7 @@ async fn main() -> Result<()> {
                     state = State::Idle;
                     audio_buffer.clear();
                     response_tx_opt = None;
+                    pending_result = None;
                 }
                 Command::GetStatus { response_tx } => {
                     let status_resp = StatusResponse {
@@ -341,6 +361,10 @@ async fn main() -> Result<()> {
                         stt_config.max_recording_seconds
                     );
                     state = State::Processing;
+                    // Notify client to stop UI and request result
+                    tokio::spawn(async move {
+                        notify_client_auto_stop().await;
+                    });
                 }
             }
 
@@ -369,6 +393,9 @@ async fn main() -> Result<()> {
 
             if let Some(tx) = response_tx_opt.take() {
                 let _ = tx.send(text);
+                pending_result = None;
+            } else {
+                pending_result = Some(text);
             }
 
             state = State::Idle;
