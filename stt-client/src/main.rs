@@ -111,7 +111,6 @@ fn main() {
         // GTK Main Loop Context
         glib::MainContext::default().spawn_local(async move {
             let mut recording = false;
-            let mut last_type = String::new(); // "TYPE" or "COPY"
 
             while let Ok(action) = rx.recv().await {
                 match action {
@@ -119,7 +118,6 @@ fn main() {
                         if !recording {
                             // START
                             recording = true;
-                            last_type = mode;
                             osd_clone.show("● GRABANDO", "red");
                             let _ = daemon_tx.send(DaemonCommand::Start);
                         } else {
@@ -127,7 +125,7 @@ fn main() {
                             recording = false;
                             osd_clone.show("Procesando...", "orange");
                             let _ = daemon_tx.send(DaemonCommand::Stop {
-                                mode: last_type.clone(),
+                                mode,
                                 response_tx: tx_back.clone(),
                             });
                         }
