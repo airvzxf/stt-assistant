@@ -29,19 +29,56 @@ makepkg -si
 
 ## Configuration
 
-You can configure the assistant using `stt-assistant.toml`. The daemon searches for this file in the current directory by default.
+You can configure the daemon using a TOML file. The daemon looks for configuration in the following order:
+
+1.  **CLI Arguments**: (e.g., `--config my_config.toml` or `--language en`)
+2.  **User Config**: `~/.config/stt-assistant/config.toml`
+3.  **System Config**: `/etc/stt-assistant.toml`
+4.  **Environment Variables**: (e.g., `STT_LANGUAGE=fr`)
+
+### Example Configuration (`config.toml`)
 
 ```toml
+# Path to the model file.
+# Can be an absolute path, or relative to:
+# - $HOME/.local/share/stt-assistant/models/
+# - /usr/share/stt-assistant/models/
+# - ./models/
 model_path = "ggml-base.bin"
+
+# Language code (e.g., "es", "en", "fr")
+# This is passed to the Whisper model.
 language = "es"
-# Safety limit for recording duration (in seconds)
+
+# Maximum recording time in seconds.
+# The daemon will automatically stop and process the audio if this limit is reached.
+# Default is 300 seconds (5 minutes). Set to a higher value for long dictations,
+# or lower to prevent memory abuse.
 max_recording_seconds = 300
 ```
 
-You can also override these settings via CLI arguments when running `stt-daemon`:
-```bash
-stt-daemon --max-recording-seconds 600 --language en
-```
+## Customizing Systemd Services
+
+If you need to change how the services start (e.g., adding environment variables like `RUST_LOG`), the best practice is to use a **drop-in override** rather than copying the entire file.
+
+### Example: Enable Debug Logging
+
+1.  Create an override for the user service:
+    ```bash
+    systemctl --user edit stt-daemon.service
+    ```
+2.  Add your changes in the editor that opens:
+    ```ini
+    [Service]
+    Environment=RUST_LOG=debug
+    ```
+3.  Save and exit. Systemd will automatically reload.
+4.  Restart the service:
+    ```bash
+    systemctl --user restart stt-daemon.service
+    ```
+
+This method preserves your changes even if the main package updates the service file.
 
 ## Client CLI & Controls
 

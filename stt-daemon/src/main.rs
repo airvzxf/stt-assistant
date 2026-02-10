@@ -179,23 +179,23 @@ async fn main() -> Result<()> {
 
     let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
 
-    // Load configuration from multiple sources
+    // Load configuration from multiple sources in order of precedence (last one wins)
     let mut builder = Config::builder();
 
-    // 1. Explicit config file
-    if let Some(cfg_path) = args.config {
-        builder = builder.add_source(File::with_name(&cfg_path));
-    }
+    // 1. System config (/etc/stt-assistant.toml) - Lowest priority
+    builder = builder.add_source(File::with_name("/etc/stt-assistant.toml").required(false));
 
     // 2. User config (~/.config/stt-assistant/config.toml)
     builder = builder.add_source(
         File::with_name(&format!("{}/.config/stt-assistant/config.toml", home)).required(false),
     );
 
-    // 3. System config (/etc/stt-assistant.toml)
-    builder = builder.add_source(File::with_name("/etc/stt-assistant.toml").required(false));
+    // 3. Explicit config file via CLI --config
+    if let Some(cfg_path) = args.config {
+        builder = builder.add_source(File::with_name(&cfg_path));
+    }
 
-    // 4. Environment variables
+    // 4. Environment variables - Highest priority
     builder = builder.add_source(config::Environment::with_prefix("STT"));
 
     let config_res = builder.build();

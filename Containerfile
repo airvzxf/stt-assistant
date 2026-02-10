@@ -91,7 +91,8 @@ COPY --from=builder \
     /tmp/artifacts/
 
 # 8. INSTALL: Move artifacts to final locations
-RUN mv /tmp/artifacts/libgtk4-layer-shell* /usr/lib/x86_64-linux-gnu/ && \
+RUN mkdir -p /usr/lib/x86_64-linux-gnu/girepository-1.0/ && \
+    mv /tmp/artifacts/libgtk4-layer-shell* /usr/lib/x86_64-linux-gnu/ && \
     mv /tmp/artifacts/Gtk4LayerShell-1.0.typelib /usr/lib/x86_64-linux-gnu/girepository-1.0/ && \
     mv /tmp/artifacts/stt-* . && \
     rm -rf /tmp/artifacts
