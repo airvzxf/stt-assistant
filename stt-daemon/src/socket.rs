@@ -1,9 +1,20 @@
 use anyhow::{Context, Result};
 use log::{error, info};
+use serde::{Deserialize, Serialize};
 use std::os::unix::fs::PermissionsExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixListener;
 use tokio::sync::{mpsc, oneshot};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StatusResponse {
+    pub active: bool,
+    pub pid: u32,
+    pub model_path: String,
+    pub language: String,
+    pub max_recording_seconds: u32,
+    pub state: String,
+}
 
 #[derive(Debug)]
 pub enum Command {
@@ -12,6 +23,9 @@ pub enum Command {
         response_tx: oneshot::Sender<String>,
     },
     Cancel,
+    GetStatus {
+        response_tx: oneshot::Sender<StatusResponse>,
+    },
 }
 
 pub struct SocketServer {
@@ -86,6 +100,31 @@ impl SocketServer {
                                     "CANCEL" => {
                                         let _ = cmd_tx.send(Command::Cancel).await;
                                         let _ = stream.write_all(b"STATUS: CANCELLED").await;
+                                    }
+                                    "STATUS" => {
+                                        let (tx, rx) = oneshot::channel();
+                                        if let Err(e) = cmd_tx
+                                            .send(Command::GetStatus { response_tx: tx })
+                                            .await
+                                        {
+                                            error!("Failed to send status command: {}", e);
+                                            let _ = stream
+                                                .write_all(b"ERROR: Internal channel error")
+                                                .await;
+                                        } else {
+                                            match rx.await {
+                                                Ok(status) => {
+                                                    let json = serde_json::to_string(&status)
+                                                        .unwrap_or_else(|_| "{}".to_string());
+                                                    let _ = stream.write_all(json.as_bytes()).await;
+                                                }
+                                                Err(_) => {
+                                                    let _ = stream
+                                                        .write_all(b"ERROR: Failed to get status")
+                                                        .await;
+                                                }
+                                            }
+                                        }
                                     }
                                     _ => {
                                         let _ = stream.write_all(b"ERROR: Unknown command").await;

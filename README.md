@@ -60,6 +60,25 @@ stt-client cancel
 
 Run `stt-client --help` for more details.
 
+## Daemon Status & Monitoring
+
+You can check the real-time status of the audio daemon (PID, current model, language, state, etc.) by running:
+
+```bash
+stt-daemon status
+```
+
+**Example Output:**
+
+```text
+STT Daemon Status
+ACTIVE     PID        MODEL                          LANG       MAX_SEC    STATE
+---------- ---------- ------------------------------ ---------- ---------- ---------------
+YES        1234       ggml-base.bin                  es         300        Idle
+
+Full Model Path: /usr/share/stt-assistant/models/ggml-base.bin
+```
+
 ## Security & Privacy
 
 - **Memory Protection**: The daemon enforces a memory limit on audio buffers (configurable via `max_recording_seconds`) to prevent OOM crashes.

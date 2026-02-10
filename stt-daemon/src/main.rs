@@ -1,9 +1,11 @@
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use config::{Config, File};
 use log::{error, info, warn};
 use ringbuf::HeapRb;
 use serde::Deserialize;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::UnixStream;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, sleep};
 
@@ -13,7 +15,7 @@ mod transcriber;
 mod vad;
 
 use audio::AudioEngine;
-use socket::{Command, SocketServer};
+use socket::{Command, SocketServer, StatusResponse};
 use transcriber::Transcriber;
 
 // Config references
@@ -39,6 +41,9 @@ impl Default for SttConfig {
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
     /// Path to configuration file
     #[arg(short, long)]
     config: Option<String>,
@@ -60,6 +65,11 @@ struct Args {
     max_recording_seconds: Option<u32>,
 }
 
+#[derive(Subcommand, Debug)]
+enum Commands {
+    Status,
+}
+
 #[derive(PartialEq)]
 enum State {
     Idle,
@@ -67,11 +77,106 @@ enum State {
     Processing,
 }
 
+async fn run_status_client() -> Result<()> {
+    let mut stream = match UnixStream::connect(SOCKET_PATH).await {
+        Ok(s) => s,
+        Err(_) => {
+            println!("STT Daemon Status");
+            println!(
+                "{:<10} {:<10} {:<30} {:<10} {:<10} {:<15}",
+                "ACTIVE", "PID", "MODEL", "LANG", "MAX_SEC", "STATE"
+            );
+            println!(
+                "{:-<10} {:-<10} {:-<30} {:-<10} {:-<10} {:-<15}",
+                "", "", "", "", "", ""
+            );
+            println!(
+                "{:<10} {:<10} {:<30} {:<10} {:<10} {:<15}",
+                "NO", "-", "-", "-", "-", "STOPPED"
+            );
+            return Ok(());
+        }
+    };
+
+    if let Err(e) = stream.write_all(b"STATUS").await {
+        eprintln!("Failed to send command to daemon: {}", e);
+        return Ok(());
+    }
+
+    let mut buf = Vec::new();
+    if let Err(e) = stream.read_to_end(&mut buf).await {
+        eprintln!("Failed to read response from daemon: {}", e);
+        return Ok(());
+    }
+
+    let response = String::from_utf8_lossy(&buf);
+
+    if response.trim().is_empty() {
+        eprintln!("Empty response from daemon.");
+        return Ok(());
+    }
+
+    if response.starts_with("ERROR") {
+        eprintln!("Daemon returned error: {}", response);
+        return Ok(());
+    }
+
+    let status: StatusResponse = match serde_json::from_str(&response) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Failed to parse response: {} (Response: {})", e, response);
+            return Ok(());
+        }
+    };
+
+    println!("STT Daemon Status");
+    println!(
+        "{:<10} {:<10} {:<30} {:<10} {:<10} {:<15}",
+        "ACTIVE", "PID", "MODEL", "LANG", "MAX_SEC", "STATE"
+    );
+    println!(
+        "{:-<10} {:-<10} {:-<30} {:-<10} {:-<10} {:-<15}",
+        "", "", "", "", "", ""
+    );
+
+    let model_display = if status.model_path.len() > 28 {
+        format!(
+            "...{}",
+            &status.model_path[status.model_path.len().saturating_sub(25)..]
+        )
+    } else {
+        status.model_path.clone()
+    };
+
+    println!(
+        "{:<10} {:<10} {:<30} {:<10} {:<10} {:<15}",
+        if status.active { "YES" } else { "NO" },
+        status.pid,
+        model_display,
+        status.language,
+        status.max_recording_seconds,
+        status.state
+    );
+
+    if status.active {
+        println!("\nFull Model Path: {}", status.model_path);
+    }
+
+    Ok(())
+}
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     let args = Args::parse();
+
+    if let Some(Commands::Status) = args.command {
+        if let Err(e) = run_status_client().await {
+            eprintln!("Error querying status: {}", e);
+        }
+        return Ok(());
+    }
+
     let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
 
     // Load configuration from multiple sources
@@ -197,6 +302,21 @@ async fn main() -> Result<()> {
                     state = State::Idle;
                     audio_buffer.clear();
                     response_tx_opt = None;
+                }
+                Command::GetStatus { response_tx } => {
+                    let status_resp = StatusResponse {
+                        active: true,
+                        pid: std::process::id(),
+                        model_path: stt_config.model_path.clone(),
+                        language: stt_config.language.clone(),
+                        max_recording_seconds: stt_config.max_recording_seconds,
+                        state: match state {
+                            State::Idle => "Idle".to_string(),
+                            State::Recording => "Recording".to_string(),
+                            State::Processing => "Processing".to_string(),
+                        },
+                    };
+                    let _ = response_tx.send(status_resp);
                 }
             }
         }
