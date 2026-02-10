@@ -20,13 +20,19 @@ enum Commands {
     /// Download a model
     Download {
         /// Name of the model to download (e.g., "base", "small", "medium")
-        name: String,
+        name: Option<String>,
         /// Force re-download
         #[arg(short, long)]
         force: bool,
         /// Download to global system directory (/usr/share/stt-assistant/models)
         #[arg(short, long)]
         global: bool,
+        /// Custom URL to download from
+        #[arg(short, long)]
+        url: Option<String>,
+        /// Custom output filename
+        #[arg(short, long)]
+        out: Option<String>,
     },
     /// Show the storage paths
     Path,
@@ -87,7 +93,7 @@ async fn main() -> Result<()> {
             let local_dir = get_local_models_dir()?;
             let global_dir = get_global_models_dir();
 
-            println!("Available models from HuggingFace (ggerganov/whisper.cpp):");
+            println!("Available models in https://huggingface.co/ggerganov/whisper.cpp:");
             println!(
                 "{:<12} {:<40} {:<10} {:<10}",
                 "NAME", "DESCRIPTION", "LOCAL", "GLOBAL"
@@ -107,8 +113,6 @@ async fn main() -> Result<()> {
             }
 
             println!("\nNote: stt-daemon prioritizes LOCAL models over GLOBAL ones.");
-
-            println!("Example Download URL: {}", MODELS[1].url);
         }
         Commands::Path => {
             println!("Local:  {}", get_local_models_dir()?.display());
@@ -118,13 +122,48 @@ async fn main() -> Result<()> {
             name,
             force,
             global,
+            url,
+            out,
         } => {
-            let model = MODELS.iter().find(|m| m.name == name).ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Model '{}' not found. Use 'list' to see available models.",
-                    name
+            let (download_url, model_identifier) = if let Some(custom_url) = url.clone() {
+                (custom_url, name.clone())
+            } else {
+                let name = name
+                    .clone()
+                    .ok_or_else(|| anyhow::anyhow!("Model name or --url is required."))?;
+                if let Some(model) = MODELS.iter().find(|m| m.name == name) {
+                    println!("Download from https://huggingface.co/ggerganov/whisper.cpp");
+                    (model.url.to_string(), Some(model.name.to_string()))
+                } else {
+                    println!("Download from https://huggingface.co/ggerganov/whisper.cpp");
+                    let constructed_url = format!(
+                        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{}.bin",
+                        name
+                    );
+                    (constructed_url, Some(name))
+                }
+            };
+
+            let file_name = if let Some(output_name) = out {
+                output_name
+            } else if url.is_some() {
+                // If URL is provided, default to the filename in the URL
+                Path::new(&download_url)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Could not determine filename from URL. Use --out to specify one."
+                        )
+                    })?
+            } else {
+                // Default HuggingFace pattern
+                format!(
+                    "ggml-{}.bin",
+                    model_identifier.expect("Model identifier should be present if URL is not")
                 )
-            })?;
+            };
 
             let target_dir = if global {
                 get_global_models_dir()
@@ -141,20 +180,19 @@ async fn main() -> Result<()> {
                 })?;
             }
 
-            let file_name = format!("ggml-{}.bin", model.name);
             let dest_path = target_dir.join(&file_name);
 
             if dest_path.exists() && !force {
                 println!(
-                    "Model '{}' already exists at {}. Use --force to overwrite.",
-                    name,
+                    "File '{}' already exists at {}. Use --force to overwrite.",
+                    file_name,
                     dest_path.display()
                 );
                 return Ok(());
             }
 
-            println!("Downloading {} to {}...", model.name, dest_path.display());
-            download_file(model.url, &dest_path).await?;
+            println!("Downloading to {}...", dest_path.display());
+            download_file(&download_url, &dest_path).await?;
             println!("Download complete.");
         }
     }

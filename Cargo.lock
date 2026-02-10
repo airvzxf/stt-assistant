@@ -2431,6 +2431,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-channel",
+ "clap",
  "env_logger",
  "gtk4",
  "gtk4-layer-shell",

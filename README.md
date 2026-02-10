@@ -74,8 +74,17 @@ Use `stt-model-manager` to download and manage Whisper models:
 # List available and installed models
 stt-model-manager list
 
-# Download a more accurate model locally
-stt-model-manager download small
+# Download a predefined model
+stt-model-manager download base
+
+# Download ANY model from whisper.cpp HuggingFace repo (e.g. large-v3-turbo-q8_0)
+stt-model-manager download large-v3-turbo-q8_0
+
+# Download from a custom URL
+stt-model-manager download --url https://example.com/models/custom-whisper.bin
+
+# Specify a custom output name
+stt-model-manager download base --out my-model.bin
 
 # Download a model for all users (requires sudo)
 sudo stt-model-manager download base --global
