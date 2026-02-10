@@ -23,6 +23,7 @@ const SOCKET_PATH: &str = "/tmp/stt-sock";
 struct SttConfig {
     model_path: String,
     language: String,
+    max_recording_seconds: u32,
 }
 
 impl Default for SttConfig {
@@ -30,6 +31,7 @@ impl Default for SttConfig {
         Self {
             model_path: "ggml-base.bin".to_string(),
             language: "es".to_string(),
+            max_recording_seconds: 600, // 10 minutes default
         }
     }
 }
@@ -52,6 +54,10 @@ struct Args {
     /// Language (overrides config)
     #[arg(short, long)]
     language: Option<String>,
+
+    /// Maximum recording time in seconds (overrides config)
+    #[arg(long)]
+    max_recording_seconds: Option<u32>,
 }
 
 #[derive(PartialEq)]
@@ -102,6 +108,9 @@ async fn main() -> Result<()> {
     }
     if let Some(l) = args.language {
         stt_config.language = l;
+    }
+    if let Some(s) = args.max_recording_seconds {
+        stt_config.max_recording_seconds = s;
     }
 
     // Attempt to resolve model path if it's just a filename
@@ -161,6 +170,7 @@ async fn main() -> Result<()> {
     let mut audio_buffer: Vec<f32> = Vec::with_capacity(16000 * 30); // Linear buffer for recording
     let chunk_size = 512;
     let mut chunk_buf: Vec<f32> = Vec::with_capacity(chunk_size);
+    let mut response_tx_opt: Option<tokio::sync::oneshot::Sender<String>> = None;
 
     info!("System Ready. Waiting for commands on {}", SOCKET_PATH);
 
@@ -173,16 +183,20 @@ async fn main() -> Result<()> {
                     state = State::Recording;
                     audio_buffer.clear();
                 }
-                Command::Stop => {
+                Command::Stop { response_tx } => {
                     info!("Command: STOP");
                     if state == State::Recording {
                         state = State::Processing;
+                        response_tx_opt = Some(response_tx);
+                    } else {
+                        let _ = response_tx.send("".to_string());
                     }
                 }
                 Command::Cancel => {
                     info!("Command: CANCEL");
                     state = State::Idle;
                     audio_buffer.clear();
+                    response_tx_opt = None;
                 }
             }
         }
@@ -198,7 +212,16 @@ async fn main() -> Result<()> {
 
             // If Recording, save to buffer
             if state == State::Recording {
-                audio_buffer.extend_from_slice(&chunk_buf);
+                // Safety limit: User-defined or default maximum time
+                if audio_buffer.len() < 16000 * stt_config.max_recording_seconds as usize {
+                    audio_buffer.extend_from_slice(&chunk_buf);
+                } else {
+                    warn!(
+                        "Audio buffer limit reached ({}s). Stopping recording automatically.",
+                        stt_config.max_recording_seconds
+                    );
+                    state = State::Processing;
+                }
             }
 
             chunk_buf.clear();
@@ -211,22 +234,21 @@ async fn main() -> Result<()> {
         if state == State::Processing {
             info!("Processing {} samples...", audio_buffer.len());
 
-            if audio_buffer.is_empty() {
+            let text = if audio_buffer.is_empty() {
                 warn!("Audio buffer empty, skipping transcription.");
-                state = State::Idle;
-                continue;
-            }
+                "".to_string()
+            } else {
+                match transcriber.transcribe(&audio_buffer, Some(&stt_config.language)) {
+                    Ok(text) => text,
+                    Err(e) => {
+                        error!("Transcription failed: {}", e);
+                        format!("ERROR: {}", e)
+                    }
+                }
+            };
 
-            match transcriber.transcribe(&audio_buffer, Some(&stt_config.language)) {
-                Ok(text) => {
-                    info!("Transcription: {}", text);
-                    // Temporary: Write to a file that the client can read
-                    std::fs::write("/tmp/stt_result.txt", &text)
-                        .unwrap_or_else(|e| error!("Failed to write result: {}", e));
-                }
-                Err(e) => {
-                    error!("Transcription failed: {}", e);
-                }
+            if let Some(tx) = response_tx_opt.take() {
+                let _ = tx.send(text);
             }
 
             state = State::Idle;

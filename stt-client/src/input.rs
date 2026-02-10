@@ -5,7 +5,6 @@ pub fn type_text(text: &str) {
     if text.trim().is_empty() {
         return;
     }
-    info!("Typing text: {}", text);
 
     // wtype
     let res = Command::new("wtype").arg(text).output();

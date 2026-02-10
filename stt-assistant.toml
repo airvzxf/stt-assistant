@@ -10,3 +10,9 @@ model_path = "ggml-base.bin"
 # Language code (e.g., "es", "en", "fr")
 # This is passed to the Whisper model.
 language = "es"
+
+# Maximum recording time in seconds.
+# The daemon will automatically stop and process the audio if this limit is reached.
+# Default is 300 seconds (5 minutes). Set to a higher value for long dictations,
+# or lower to prevent memory abuse.
+max_recording_seconds = 300

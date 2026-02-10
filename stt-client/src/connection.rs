@@ -2,16 +2,14 @@ use anyhow::{Context, Result};
 use std::path::Path;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::time::{Duration, sleep};
 
 pub const DAEMON_SOCKET: &str = "/tmp/stt-sock";
 pub const CONTROL_SOCKET: &str = "/tmp/stt-control.sock";
-const RESULT_FILE: &str = "/tmp/stt_result.txt";
 
 pub struct SocketClient;
 
 impl SocketClient {
-    pub async fn send_command(cmd: &str) -> Result<()> {
+    pub async fn send_command(cmd: &str) -> Result<String> {
         let mut stream = UnixStream::connect(DAEMON_SOCKET)
             .await
             .context("Failed to connect to daemon")?;
@@ -19,7 +17,14 @@ impl SocketClient {
             .write_all(cmd.as_bytes())
             .await
             .context("Failed to send command")?;
-        Ok(())
+
+        // Wait for response
+        let mut buf = Vec::new();
+        stream
+            .read_to_end(&mut buf)
+            .await
+            .context("Failed to read response from daemon")?;
+        Ok(String::from_utf8_lossy(&buf).to_string())
     }
 
     pub async fn send_control_command(cmd: &str) -> Result<()> {
@@ -31,23 +36,6 @@ impl SocketClient {
             .await
             .context("Failed to send control command")?;
         Ok(())
-    }
-
-    pub async fn wait_for_result(timeout_s: u64) -> Option<String> {
-        let start = std::time::Instant::now();
-        while start.elapsed().as_secs_f32() < timeout_s as f32 {
-            if Path::new(RESULT_FILE).exists() {
-                match std::fs::read_to_string(RESULT_FILE) {
-                    Ok(text) if !text.trim().is_empty() => {
-                        let _ = std::fs::remove_file(RESULT_FILE);
-                        return Some(text);
-                    }
-                    _ => {}
-                }
-            }
-            sleep(Duration::from_millis(100)).await;
-        }
-        None
     }
 }
 

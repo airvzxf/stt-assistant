@@ -1,13 +1,16 @@
 use anyhow::{Context, Result};
 use log::{error, info};
+use std::os::unix::fs::PermissionsExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixListener;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 #[derive(Debug)]
 pub enum Command {
     Start,
-    Stop,
+    Stop {
+        response_tx: oneshot::Sender<String>,
+    },
     Cancel,
 }
 
@@ -24,7 +27,13 @@ impl SocketServer {
         }
 
         let listener = UnixListener::bind(path).context("Failed to bind unix socket")?;
-        info!("Listening on unix socket: {}", path);
+
+        // Set permissions to 0600 (owner read/write only)
+        let mut perms = std::fs::metadata(path)?.permissions();
+        perms.set_mode(0o600);
+        std::fs::set_permissions(path, perms).context("Failed to set socket permissions")?;
+
+        info!("Listening on unix socket: {} (restricted to 0600)", path);
 
         Ok(Self { listener, cmd_tx })
     }
@@ -42,54 +51,46 @@ impl SocketServer {
                                     String::from_utf8_lossy(&buf[..n]).trim().to_string();
                                 info!("Received command: {}", command_str);
 
-                                let response = match command_str.as_str() {
+                                match command_str.as_str() {
                                     "START" => {
                                         if let Err(e) = cmd_tx.send(Command::Start).await {
                                             error!("Failed to send start command: {}", e);
-                                            Some("ERROR: Internal channel error")
+                                            let _ = stream
+                                                .write_all(b"ERROR: Internal channel error")
+                                                .await;
                                         } else {
-                                            Some("STATUS: RECORDING")
+                                            let _ = stream.write_all(b"STATUS: RECORDING").await;
                                         }
                                     }
                                     "STOP" => {
-                                        if let Err(e) = cmd_tx.send(Command::Stop).await {
+                                        let (tx, rx) = oneshot::channel();
+                                        if let Err(e) =
+                                            cmd_tx.send(Command::Stop { response_tx: tx }).await
+                                        {
                                             error!("Failed to send stop command: {}", e);
-                                            Some("ERROR: Internal channel error")
+                                            let _ = stream
+                                                .write_all(b"ERROR: Internal channel error")
+                                                .await;
                                         } else {
-                                            // The actual transcription will be sent by the main loop via a separate connection or mechanism?
-                                            // Ideally we want to keep THIS connection open to send the result back.
-                                            // But for now let's say we acknowledge the STOP.
-                                            // WAIT! The architecture implies the CLIENT waits for the response on the SAME connection.
-                                            // So we should probably hold the connection?
-                                            // Complex: The MAIN LOOP does the processing.
-                                            // Simplified for now: We just signal the main loop.
-                                            // The main loop needs a way to send back the transcription.
-                                            // For this iteration, let's assume the main loop will write to a 'response' channel we pass?
-                                            // No, that's too complex for this step.
-                                            // Let's make it simpler: Client sends STOP. Server says "PROCESSING".
-                                            // Client waits. Server finishes processing and needs to send "RESULT: ...".
-                                            // Hmmm. The `stt_controller.py` will wait on the socket.
-                                            // So we need to keep `stream` alive? But we are spawning a task.
-
-                                            // Alternative: `stt_controller.py` sends STOP and waits.
-                                            // We need to bridge the Main Thread (Whisper) result back to this socket task.
-                                            // This requires a response channel.
-
-                                            Some("STATUS: PROCESSING")
+                                            // Wait for the transcription result from the main loop
+                                            match rx.await {
+                                                Ok(text) => {
+                                                    let _ = stream.write_all(text.as_bytes()).await;
+                                                }
+                                                Err(_) => {
+                                                    let _ = stream.write_all(b"ERROR: Transcription cancelled or failed").await;
+                                                }
+                                            }
                                         }
                                     }
                                     "CANCEL" => {
                                         let _ = cmd_tx.send(Command::Cancel).await;
-                                        Some("STATUS: CANCELLED")
+                                        let _ = stream.write_all(b"STATUS: CANCELLED").await;
                                     }
-                                    _ => Some("ERROR: Unknown command"),
+                                    _ => {
+                                        let _ = stream.write_all(b"ERROR: Unknown command").await;
+                                    }
                                 };
-
-                                if let Some(resp) = response
-                                    && let Err(e) = stream.write_all(resp.as_bytes()).await
-                                {
-                                    error!("Failed to write response: {}", e);
-                                }
 
                                 // TODO: Implementing full bidirectional wait for transcription is tricky here without a shared state or response channel.
                                 // Quick fix: The main loop will handle the logic, but how does it send back to THIS stream?

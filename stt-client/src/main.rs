@@ -1,4 +1,5 @@
 use async_channel::Sender;
+use clap::{Parser, Subcommand};
 use gtk4::prelude::*;
 use gtk4::{Application, glib};
 use std::thread;
@@ -13,6 +14,23 @@ mod ui;
 
 use connection::{ControlServer, SocketClient};
 use ui::Osd;
+
+#[derive(Parser)]
+#[command(author, version, about = "STT Assistant Client - GUI and Control CLI", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Toggle recording and type the result
+    ToggleType,
+    /// Toggle recording and copy the result to clipboard
+    ToggleCopy,
+    /// Cancel current recording
+    Cancel,
+}
 
 #[derive(Debug, Clone)]
 enum AppAction {
@@ -35,14 +53,19 @@ enum DaemonCommand {
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    // Check CLI args
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() > 1 {
-        let cmd = &args[1];
+    let cli = Cli::parse();
+
+    if let Some(command) = cli.command {
+        let cmd_str = match command {
+            Commands::ToggleType => "TOGGLE_TYPE",
+            Commands::ToggleCopy => "TOGGLE_COPY",
+            Commands::Cancel => "CANCEL",
+        };
+
         let rt = Runtime::new().expect("Failed to create Tokio runtime");
         rt.block_on(async {
-            match SocketClient::send_control_command(cmd).await {
-                Ok(_) => info!("Command '{}' sent successfully.", cmd),
+            match SocketClient::send_control_command(cmd_str).await {
+                Ok(_) => info!("Command '{}' sent successfully.", cmd_str),
                 Err(e) => log::error!("Failed to send command: {}", e),
             }
         });
@@ -146,25 +169,36 @@ async fn handle_daemon_commands(
                 let _ = SocketClient::send_command("START").await;
             }
             DaemonCommand::Stop { mode, response_tx } => {
-                let _ = SocketClient::send_command("STOP").await;
-                // Wait for result
-                if let Some(text) = SocketClient::wait_for_result(5).await {
-                    if mode == "TYPE" {
-                        input::type_text(&text);
-                        let _ = response_tx.send(AppAction::OsdHide).await;
-                    } else {
-                        input::copy_text(&text);
-                        let _ = response_tx
-                            .send(AppAction::OsdUpdate(
-                                "Copiado".to_string(),
-                                "green".to_string(),
-                            ))
-                            .await;
-                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                // The STOP command now returns the transcription result directly
+                match SocketClient::send_command("STOP").await {
+                    Ok(text) if !text.trim().is_empty() && !text.starts_with("ERROR:") => {
+                        if mode == "TYPE" {
+                            input::type_text(&text);
+                            let _ = response_tx.send(AppAction::OsdHide).await;
+                        } else {
+                            input::copy_text(&text);
+                            let _ = response_tx
+                                .send(AppAction::OsdUpdate(
+                                    "Copiado".to_string(),
+                                    "green".to_string(),
+                                ))
+                                .await;
+                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                            let _ = response_tx.send(AppAction::OsdHide).await;
+                        }
+                    }
+                    Ok(text) if text.starts_with("ERROR:") => {
+                        log::error!("Daemon error: {}", text);
                         let _ = response_tx.send(AppAction::OsdHide).await;
                     }
-                } else {
-                    let _ = response_tx.send(AppAction::OsdHide).await;
+                    Ok(_) => {
+                        // Empty result
+                        let _ = response_tx.send(AppAction::OsdHide).await;
+                    }
+                    Err(e) => {
+                        log::error!("Failed to get result from daemon: {}", e);
+                        let _ = response_tx.send(AppAction::OsdHide).await;
+                    }
                 }
             }
             DaemonCommand::Cancel => {

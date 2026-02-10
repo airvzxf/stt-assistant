@@ -34,7 +34,37 @@ You can configure the assistant using `stt-assistant.toml`. The daemon searches 
 ```toml
 model_path = "ggml-base.bin"
 language = "es"
+# Safety limit for recording duration (in seconds)
+max_recording_seconds = 300
 ```
+
+You can also override these settings via CLI arguments when running `stt-daemon`:
+```bash
+stt-daemon --max-recording-seconds 600 --language en
+```
+
+## Client CLI & Controls
+
+The `stt-client` now supports CLI commands for integration with shortcuts or scripts:
+
+```bash
+# Toggle recording and TYPE the result
+stt-client toggle-type
+
+# Toggle recording and COPY the result to clipboard
+stt-client toggle-copy
+
+# Cancel current recording
+stt-client cancel
+```
+
+Run `stt-client --help` for more details.
+
+## Security & Privacy
+
+- **Memory Protection**: The daemon enforces a memory limit on audio buffers (configurable via `max_recording_seconds`) to prevent OOM crashes.
+- **Socket Security**: IPC sockets are restricted to the owner (`0600`), preventing unauthorized local access.
+- **Privacy**: Transcriptions are processed locally and never logged to disk or system logs. Temporary file communication has been replaced with secure direct memory transfer.
 
 ## Model Management
 

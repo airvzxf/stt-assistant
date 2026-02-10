@@ -7,6 +7,14 @@ ExecStart=/usr/bin/stt-daemon
 Restart=on-failure
 Type=simple
 Environment=RUST_LOG=info
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+RestrictRealtime=yes
+MemoryDenyWriteExecute=no
 
 [Install]
 WantedBy=default.target
