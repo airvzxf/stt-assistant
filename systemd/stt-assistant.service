@@ -10,6 +10,9 @@ ExecStart=/usr/bin/stt-client
 Restart=on-failure
 Type=simple
 Environment=RUST_LOG=info
+# The GSK_RENDERER solves the error:
+#   vkQueuePresentKHR(): A swapchain no longer matches the surface properties exactly,
+   but can still be used to present to the surface successfully. (VK_SUBOPTIMAL_KHR) (1000001003)
 Environment=GSK_RENDERER=gl
 
 [Install]
