@@ -16,6 +16,13 @@ pub struct StatusResponse {
     pub state: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SttConfig {
+    pub model_path: String,
+    pub language: String,
+    pub max_recording_seconds: u32,
+}
+
 #[derive(Debug)]
 pub enum Command {
     Start,
@@ -25,6 +32,10 @@ pub enum Command {
     Cancel,
     GetStatus {
         response_tx: oneshot::Sender<StatusResponse>,
+    },
+    ReloadConfig {
+        new_config: SttConfig,
+        response_tx: oneshot::Sender<Result<()>>,
     },
 }
 
@@ -58,12 +69,62 @@ impl SocketServer {
                 Ok((mut stream, _addr)) => {
                     let cmd_tx = self.cmd_tx.clone();
                     tokio::spawn(async move {
-                        let mut buf = [0; 1024];
+                        let mut buf = [0; 2048]; // Increased buffer size for config JSON
                         match stream.read(&mut buf).await {
                             Ok(n) if n > 0 => {
                                 let command_str =
                                     String::from_utf8_lossy(&buf[..n]).trim().to_string();
                                 info!("Received command: {}", command_str);
+
+                                if command_str.starts_with("REFRESH") {
+                                    let json_part =
+                                        command_str.strip_prefix("REFRESH").unwrap_or("").trim();
+                                    match serde_json::from_str::<SttConfig>(json_part) {
+                                        Ok(new_config) => {
+                                            let (tx, rx) = oneshot::channel();
+                                            if let Err(e) = cmd_tx
+                                                .send(Command::ReloadConfig {
+                                                    new_config,
+                                                    response_tx: tx,
+                                                })
+                                                .await
+                                            {
+                                                error!("Failed to send reload command: {}", e);
+                                                let _ = stream
+                                                    .write_all(b"ERROR: Internal channel error")
+                                                    .await;
+                                            } else {
+                                                match rx.await {
+                                                    Ok(Ok(())) => {
+                                                        let _ = stream
+                                                            .write_all(b"OK: Config reloaded")
+                                                            .await;
+                                                    }
+                                                    Ok(Err(e)) => {
+                                                        let _ = stream
+                                                            .write_all(
+                                                                format!("ERROR: {}", e).as_bytes(),
+                                                            )
+                                                            .await;
+                                                    }
+                                                    Err(_) => {
+                                                        let _ = stream.write_all(b"ERROR: Reload cancelled or failed").await;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to parse config JSON: {}", e);
+                                            let _ = stream
+                                                .write_all(
+                                                    format!("ERROR: Invalid config JSON: {}", e)
+                                                        .as_bytes(),
+                                                )
+                                                .await;
+                                        }
+                                    }
+                                    return;
+                                }
 
                                 match command_str.as_str() {
                                     "START" => {

@@ -3,7 +3,6 @@ use clap::{Parser, Subcommand};
 use config::{Config, File};
 use log::{error, info, warn};
 use ringbuf::HeapRb;
-use serde::Deserialize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 use tokio::sync::{mpsc, oneshot};
@@ -15,7 +14,7 @@ mod transcriber;
 mod vad;
 
 use audio::AudioEngine;
-use socket::{Command, SocketServer, StatusResponse};
+use socket::{Command, SocketServer, StatusResponse, SttConfig};
 use transcriber::Transcriber;
 
 // Config references
@@ -25,23 +24,6 @@ const CONTROL_SOCKET: &str = "/tmp/stt-control.sock";
 async fn notify_client_auto_stop() {
     if let Ok(mut stream) = UnixStream::connect(CONTROL_SOCKET).await {
         let _ = stream.write_all(b"AUTO_STOP").await;
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct SttConfig {
-    model_path: String,
-    language: String,
-    max_recording_seconds: u32,
-}
-
-impl Default for SttConfig {
-    fn default() -> Self {
-        Self {
-            model_path: "ggml-base.bin".to_string(),
-            language: "es".to_string(),
-            max_recording_seconds: 600, // 10 minutes default
-        }
     }
 }
 
@@ -75,6 +57,7 @@ struct Args {
 #[derive(Subcommand, Debug)]
 enum Commands {
     Status,
+    Refresh,
 }
 
 #[derive(PartialEq)]
@@ -82,6 +65,115 @@ enum State {
     Idle,
     Recording,
     Processing,
+}
+
+fn load_config(args: &Args) -> SttConfig {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+
+    // Load configuration from multiple sources in order of precedence (last one wins)
+    let mut builder = Config::builder();
+
+    // 1. System config (/etc/stt-assistant.toml) - Lowest priority
+    builder = builder.add_source(File::with_name("/etc/stt-assistant.toml").required(false));
+
+    // 2. User config (~/.config/stt-assistant/config.toml)
+    builder = builder.add_source(
+        File::with_name(&format!("{}/.config/stt-assistant/config.toml", home)).required(false),
+    );
+
+    // 3. Explicit config file via CLI --config
+    if let Some(cfg_path) = &args.config {
+        builder = builder.add_source(File::with_name(cfg_path));
+    }
+
+    // 4. Environment variables - Highest priority
+    builder = builder.add_source(config::Environment::with_prefix("STT"));
+
+    let config_res = builder.build();
+    let mut stt_config: SttConfig = match config_res {
+        Ok(c) => c.try_deserialize().unwrap_or(SttConfig {
+            model_path: "ggml-base.bin".to_string(),
+            language: "es".to_string(),
+            max_recording_seconds: 600,
+        }),
+        Err(e) => {
+            warn!("Configuration warning: {}. Using defaults.", e);
+            SttConfig {
+                model_path: "ggml-base.bin".to_string(),
+                language: "es".to_string(),
+                max_recording_seconds: 600,
+            }
+        }
+    };
+
+    // CLI args override
+    if let Some(m) = &args.model {
+        stt_config.model_path = m.clone();
+    }
+    if let Some(l) = &args.language {
+        stt_config.language = l.clone();
+    }
+    if let Some(s) = args.max_recording_seconds {
+        stt_config.max_recording_seconds = s;
+    }
+
+    // Attempt to resolve model path if it's just a filename
+    if !std::path::Path::new(&stt_config.model_path).exists() {
+        let filename = if stt_config.model_path.contains('/') {
+            // If it contains a slash but doesn't exist, we'll still try to see if it's just the end part
+            std::path::Path::new(&stt_config.model_path)
+                .file_name()
+                .and_then(|f| f.to_str())
+                .unwrap_or(&stt_config.model_path)
+        } else {
+            &stt_config.model_path
+        };
+
+        let candidates = vec![
+            format!("{}/.local/share/stt-assistant/models/{}", home, filename),
+            format!("/usr/share/stt-assistant/models/{}", filename),
+            format!("models/{}", filename),
+            filename.to_string(),
+        ];
+
+        for path in candidates {
+            if std::path::Path::new(&path).exists() {
+                stt_config.model_path = path;
+                break;
+            }
+        }
+    }
+
+    stt_config
+}
+
+async fn run_refresh_client(config: SttConfig) -> Result<()> {
+    let mut stream = match UnixStream::connect(SOCKET_PATH).await {
+        Ok(s) => s,
+        Err(_) => {
+            eprintln!("Error: Daemon is not running.");
+            return Ok(());
+        }
+    };
+
+    let config_json = serde_json::to_string(&config)?;
+    let command = format!("REFRESH {}", config_json);
+
+    if let Err(e) = stream.write_all(command.as_bytes()).await {
+        eprintln!("Failed to send refresh command to daemon: {}", e);
+        return Ok(());
+    }
+
+    let mut buf = Vec::new();
+    if let Err(e) = stream.read_to_end(&mut buf).await {
+        eprintln!("Failed to read response from daemon: {}", e);
+        return Ok(());
+    }
+
+    let response = String::from_utf8_lossy(&buf);
+    println!("{}", response);
+
+    Ok(())
 }
 
 async fn run_status_client() -> Result<()> {
@@ -184,73 +276,15 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
-
-    // Load configuration from multiple sources in order of precedence (last one wins)
-    let mut builder = Config::builder();
-
-    // 1. System config (/etc/stt-assistant.toml) - Lowest priority
-    builder = builder.add_source(File::with_name("/etc/stt-assistant.toml").required(false));
-
-    // 2. User config (~/.config/stt-assistant/config.toml)
-    builder = builder.add_source(
-        File::with_name(&format!("{}/.config/stt-assistant/config.toml", home)).required(false),
-    );
-
-    // 3. Explicit config file via CLI --config
-    if let Some(cfg_path) = args.config {
-        builder = builder.add_source(File::with_name(&cfg_path));
-    }
-
-    // 4. Environment variables - Highest priority
-    builder = builder.add_source(config::Environment::with_prefix("STT"));
-
-    let config_res = builder.build();
-    let mut stt_config: SttConfig = match config_res {
-        Ok(c) => c.try_deserialize().unwrap_or_default(),
-        Err(e) => {
-            warn!("Configuration warning: {}. Using defaults.", e);
-            SttConfig::default()
+    if let Some(Commands::Refresh) = args.command {
+        let stt_config = load_config(&args);
+        if let Err(e) = run_refresh_client(stt_config).await {
+            eprintln!("Error refreshing daemon: {}", e);
         }
-    };
-
-    // CLI args override
-    if let Some(m) = args.model {
-        stt_config.model_path = m;
-    }
-    if let Some(l) = args.language {
-        stt_config.language = l;
-    }
-    if let Some(s) = args.max_recording_seconds {
-        stt_config.max_recording_seconds = s;
+        return Ok(());
     }
 
-    // Attempt to resolve model path if it's just a filename
-    if !std::path::Path::new(&stt_config.model_path).exists() {
-        let filename = if stt_config.model_path.contains('/') {
-            // If it contains a slash but doesn't exist, we'll still try to see if it's just the end part
-            std::path::Path::new(&stt_config.model_path)
-                .file_name()
-                .and_then(|f| f.to_str())
-                .unwrap_or(&stt_config.model_path)
-        } else {
-            &stt_config.model_path
-        };
-
-        let candidates = vec![
-            format!("{}/.local/share/stt-assistant/models/{}", home, filename),
-            format!("/usr/share/stt-assistant/models/{}", filename),
-            format!("models/{}", filename),
-            filename.to_string(),
-        ];
-
-        for path in candidates {
-            if std::path::Path::new(&path).exists() {
-                stt_config.model_path = path;
-                break;
-            }
-        }
-    }
+    let mut stt_config = load_config(&args);
 
     info!("Starting STT Daemon...");
     info!("Using model: {}", stt_config.model_path);
@@ -337,6 +371,37 @@ async fn main() -> Result<()> {
                         },
                     };
                     let _ = response_tx.send(status_resp);
+                }
+                Command::ReloadConfig {
+                    new_config,
+                    response_tx,
+                } => {
+                    info!("Command: REFRESH");
+                    let mut reload_transcriber = false;
+                    if new_config.model_path != stt_config.model_path {
+                        reload_transcriber = true;
+                    }
+
+                    stt_config = new_config;
+
+                    if reload_transcriber {
+                        info!("Model path changed, reloading transcriber...");
+                        match Transcriber::new(&stt_config.model_path) {
+                            Ok(new_transcriber) => {
+                                transcriber = new_transcriber;
+                                info!("Transcriber reloaded successfully.");
+                                let _ = response_tx.send(Ok(()));
+                            }
+                            Err(e) => {
+                                error!("Failed to reload transcriber: {}", e);
+                                let _ = response_tx
+                                    .send(Err(anyhow::anyhow!("Failed to load model: {}", e)));
+                            }
+                        }
+                    } else {
+                        info!("Configuration updated (no model change).");
+                        let _ = response_tx.send(Ok(()));
+                    }
                 }
             }
         }
