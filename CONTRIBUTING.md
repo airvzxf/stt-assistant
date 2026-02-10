@@ -46,9 +46,24 @@ makepkg -si
 
 - `stt-daemon`: Rust daemon handling audio input and Whisper transcription (CUDA).
 - `stt-client`: GTK4 client for UI feedback.
+- `stt-model-manager`: Tool for managing Whisper models.
 - `scripts/build`: Main build script (wraps Podman).
 - `pkg/`: Arch Linux packaging files.
 - `systemd/`: Service units.
+
+## Working with Models (Development)
+
+During development, you can test specific models without installing them:
+
+1.  **Place models in the root `models/` directory**: The daemon will find them there if they are not in your home directory.
+2.  **Use explicit paths**:
+    ```bash
+    ./bin/stt-daemon --model ./my-experimental-models/ggml-base.bin
+    ```
+3.  **Override via Environment**:
+    ```bash
+    STT_MODEL_PATH=/path/to/model.bin ./bin/stt-daemon
+    ```
 
 ## Coding Standards
 - Run `cargo fmt` before committing.

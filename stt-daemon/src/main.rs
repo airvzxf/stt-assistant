@@ -1,6 +1,9 @@
 use anyhow::{Context, Result};
+use clap::Parser;
+use config::{Config, File};
 use log::{error, info, warn};
 use ringbuf::HeapRb;
+use serde::Deserialize;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, sleep};
 
@@ -16,27 +19,39 @@ use transcriber::Transcriber;
 // Config references
 const SOCKET_PATH: &str = "/tmp/stt-sock";
 
-fn get_model_path() -> String {
-    if let Ok(path) = std::env::var("STT_MODEL_PATH") {
-        return path;
-    }
+#[derive(Debug, Deserialize)]
+struct SttConfig {
+    model_path: String,
+    language: String,
+}
 
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
-    let candidates = vec![
-        format!("{}/.local/share/stt-assistant/models/ggml-base.bin", home),
-        "/usr/share/stt-assistant/models/ggml-base.bin".to_string(),
-        "/usr/local/share/stt-assistant/models/ggml-base.bin".to_string(),
-        "models/ggml-base.bin".to_string(), // Local dev
-    ];
-
-    for path in candidates {
-        if std::path::Path::new(&path).exists() {
-            return path;
+impl Default for SttConfig {
+    fn default() -> Self {
+        Self {
+            model_path: "ggml-base.bin".to_string(),
+            language: "es".to_string(),
         }
     }
+}
 
-    // Default fallback (will probably fail later if it doesn't exist)
-    format!("{}/.local/share/stt-assistant/models/ggml-base.bin", home)
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Path to configuration file
+    #[arg(short, long)]
+    config: Option<String>,
+
+    /// Path or name of the model file (overrides config).
+    /// If a name is provided (e.g., 'ggml-base.bin'), it searches in order:
+    /// 1. ~/.local/share/stt-assistant/models/
+    /// 2. /usr/share/stt-assistant/models/
+    /// 3. ./models/
+    #[arg(short, long)]
+    model: Option<String>,
+
+    /// Language (overrides config)
+    #[arg(short, long)]
+    language: Option<String>,
 }
 
 #[derive(PartialEq)]
@@ -49,13 +64,89 @@ enum State {
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-    let model_path = get_model_path();
-    info!("Starting STT Daemon (Host Native)...");
-    info!("Using model: {}", model_path);
+
+    let args = Args::parse();
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+
+    // Load configuration from multiple sources
+    let mut builder = Config::builder();
+
+    // 1. Explicit config file
+    if let Some(cfg_path) = args.config {
+        builder = builder.add_source(File::with_name(&cfg_path));
+    }
+
+    // 2. User config (~/.config/stt-assistant/config.toml)
+    builder = builder.add_source(
+        File::with_name(&format!("{}/.config/stt-assistant/config.toml", home)).required(false),
+    );
+
+    // 3. System config (/etc/stt-assistant.toml)
+    builder = builder.add_source(File::with_name("/etc/stt-assistant.toml").required(false));
+
+    // 4. Environment variables
+    builder = builder.add_source(config::Environment::with_prefix("STT"));
+
+    let config_res = builder.build();
+    let mut stt_config: SttConfig = match config_res {
+        Ok(c) => c.try_deserialize().unwrap_or_default(),
+        Err(e) => {
+            warn!("Configuration warning: {}. Using defaults.", e);
+            SttConfig::default()
+        }
+    };
+
+    // CLI args override
+    if let Some(m) = args.model {
+        stt_config.model_path = m;
+    }
+    if let Some(l) = args.language {
+        stt_config.language = l;
+    }
+
+    // Attempt to resolve model path if it's just a filename
+    if !std::path::Path::new(&stt_config.model_path).exists() {
+        let filename = if stt_config.model_path.contains('/') {
+            // If it contains a slash but doesn't exist, we'll still try to see if it's just the end part
+            std::path::Path::new(&stt_config.model_path)
+                .file_name()
+                .and_then(|f| f.to_str())
+                .unwrap_or(&stt_config.model_path)
+        } else {
+            &stt_config.model_path
+        };
+
+        let candidates = vec![
+            format!("{}/.local/share/stt-assistant/models/{}", home, filename),
+            format!("/usr/share/stt-assistant/models/{}", filename),
+            format!("models/{}", filename),
+            filename.to_string(),
+        ];
+
+        for path in candidates {
+            if std::path::Path::new(&path).exists() {
+                stt_config.model_path = path;
+                break;
+            }
+        }
+    }
+
+    info!("Starting STT Daemon...");
+    info!("Using model: {}", stt_config.model_path);
+    info!("Language: {}", stt_config.language);
 
     // 1. Initialize Components
-    // ... rest of the code ...
-    let mut transcriber = Transcriber::new(&model_path).context("Failed to load Whisper model")?;
+    let mut transcriber =
+        Transcriber::new(&stt_config.model_path).context("Failed to load Whisper model")?;
+
+    // Audio Engine initialization
+    let rb = HeapRb::<f32>::new(16000 * 30); // 30 seconds buffer
+    let (producer, mut consumer) = rb.split();
+
+    let mut audio_engine = AudioEngine::new().context("Failed to init audio engine")?;
+    audio_engine
+        .start(producer)
+        .context("Failed to start audio engine")?;
 
     // Socket
     let (cmd_tx, mut cmd_rx) = mpsc::channel(32);
@@ -74,10 +165,6 @@ async fn main() -> Result<()> {
     info!("System Ready. Waiting for commands on {}", SOCKET_PATH);
 
     loop {
-        // We use a tight loop for audio processing, checking commands periodically?
-        // Or better: use tokio::select but audio is coming from ringbuffer, not async channel.
-        // We need to poll the ringbuffer frequently.
-
         // Non-blocking check for commands
         if let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
@@ -85,7 +172,6 @@ async fn main() -> Result<()> {
                     info!("Command: START");
                     state = State::Recording;
                     audio_buffer.clear();
-                    // Optional: Play sound or visual feedback is handled by client
                 }
                 Command::Stop => {
                     info!("Command: STOP");
@@ -113,9 +199,6 @@ async fn main() -> Result<()> {
             // If Recording, save to buffer
             if state == State::Recording {
                 audio_buffer.extend_from_slice(&chunk_buf);
-
-                // Optional: VAD check to auto-stop?
-                // For now, manual stop via shortcut is the requested behavior.
             }
 
             chunk_buf.clear();
@@ -134,47 +217,10 @@ async fn main() -> Result<()> {
                 continue;
             }
 
-            // Transcribe
-            // This blocks the event loop. In a real production app we'd spawn a blocking task.
-            // Since this is a single-user desktop tool, blocking for 1-2s is acceptable IF we don't drop next commands.
-            // But we might drop audio frames.
-            // Better: spawn_blocking.
-
-            match transcriber.transcribe(&audio_buffer) {
+            match transcriber.transcribe(&audio_buffer, Some(&stt_config.language)) {
                 Ok(text) => {
                     info!("Transcription: {}", text);
-                    // Send result back to socket?
-                    // Current Socket Implementation is "Push Command".
-                    // We need to send RESPONSE.
-                    // The socket task doesn't have a way to receive message FROM main yet.
-
-                    // QUICK HACK for Prototype:
-                    // Write to a status file or just log it.
-                    // The Client `stt_controller.py` can read the response from the connection if we kept it open.
-                    // BUT `src/socket.rs` spawns a task for connection and drops it or waits for read.
-
-                    // REVISIT socket.rs logic.
-                    // For now, completing the loop.
-
-                    // Temporary: Write to a file that the client can read?
-                    // Or standard out?
-
-                    // Ideally:
-                    // 1. Client connects.
-                    // 2. Client sends STOP.
-                    // 3. Client keeps reading socket.
-                    // 4. Server (Main) sends text to a channel that Socket Task is listening to?
-                    //    Socket Task is generic.
-
-                    // Architecture fix needed:
-                    // We need a Global Broadcast channel for "System Events" that socket tasks subscribe to?
-                    // Or simpler: The socket connection for STOP is the one waiting.
-
-                    // Let's assume for this step we print to stdout.
-                    // The `stt_controller.py` can capture stdout? No, it connects via socket.
-
-                    // Let's create a oneshot file `/tmp/stt_result.txt` for now as a reliable IPC transport for the large text.
-                    // The socket can say "STATUS: READY".
+                    // Temporary: Write to a file that the client can read
                     std::fs::write("/tmp/stt_result.txt", &text)
                         .unwrap_or_else(|e| error!("Failed to write result: {}", e));
                 }

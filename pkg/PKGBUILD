@@ -23,11 +23,11 @@ prepare() {
 }
 
 build() {
-    # Binaries are assumed to be built via ./scripts/build_container.sh
+    # Binaries are assumed to be built via ./scripts/build
     # and placed in bin/
     cd "$startdir/.."
-    if [ ! -f "bin/stt-daemon" ]; then
-        echo "Binaries not found in bin/. Please run ./scripts/build_container.sh first."
+    if [ ! -f "bin/stt-daemon" ] || [ ! -f "bin/stt-client" ] || [ ! -f "bin/stt-model-manager" ]; then
+        echo "Binaries not found in bin/. Please run ./scripts/build first."
         return 1
     fi
 }

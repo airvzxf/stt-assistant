@@ -1,0 +1,12 @@
+# STT Assistant Configuration
+
+# Path to the model file.
+# Can be an absolute path, or relative to:
+# - $HOME/.local/share/stt-assistant/models/
+# - /usr/share/stt-assistant/models/
+# - ./models/
+model_path = "ggml-base.bin"
+
+# Language code (e.g., "es", "en", "fr")
+# This is passed to the Whisper model.
+language = "es"

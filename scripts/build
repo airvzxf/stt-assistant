@@ -40,7 +40,7 @@ time podman run --rm \
     --entrypoint sh \
     -v "$(pwd):/app_out" \
     "${IMAGE_NAME}" \
-    -c "cp /app/stt-daemon /app_out/bin/stt-daemon && cp /app/stt-client /app_out/bin/stt-client"
+    -c "cp /app/stt-daemon /app_out/bin/stt-daemon && cp /app/stt-client /app_out/bin/stt-client && cp /app/stt-model-manager /app_out/bin/stt-model-manager"
 
 echo "--> Done! Binaries extracted to bin/"
 echo "--> To install: cd pkg && makepkg -si"

@@ -40,22 +40,25 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY stt-daemon/Cargo.toml ./stt-daemon/
 COPY stt-client/Cargo.toml ./stt-client/
+COPY stt-model-manager/Cargo.toml ./stt-model-manager/
 
 # Create dummy sources for dependency pre-compilation
-RUN mkdir -p stt-daemon/src stt-client/src && \
+RUN mkdir -p stt-daemon/src stt-client/src stt-model-manager/src && \
     echo "fn main() {}" > stt-daemon/src/main.rs && \
-    echo "fn main() {}" > stt-client/src/main.rs
+    echo "fn main() {}" > stt-client/src/main.rs && \
+    echo "fn main() {}" > stt-model-manager/src/main.rs
 
 ENV CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH}
 RUN cargo build --release --workspace
-RUN rm -rf stt-daemon/src stt-client/src
+RUN rm -rf stt-daemon/src stt-client/src stt-model-manager/src
 
 # Copy real source code
 COPY stt-daemon/src ./stt-daemon/src
 COPY stt-client/src ./stt-client/src
+COPY stt-model-manager/src ./stt-model-manager/src
 
 # Touch to force rebuild
-RUN touch stt-daemon/src/main.rs stt-client/src/main.rs
+RUN touch stt-daemon/src/main.rs stt-client/src/main.rs stt-model-manager/src/main.rs
 
 # Validate with Clippy
 RUN cargo clippy --release --workspace -- -D warnings
@@ -81,6 +84,7 @@ WORKDIR /app
 # Copy binaries from builder
 COPY --from=builder /app/target/release/stt-daemon .
 COPY --from=builder /app/target/release/stt-client .
+COPY --from=builder /app/target/release/stt-model-manager .
 
 # Configure ALSA to use PulseAudio
 RUN echo 'pcm.!default { type pulse }' > /etc/asound.conf && \

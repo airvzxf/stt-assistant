@@ -9,9 +9,11 @@ SYSTEMD_USER_DIR ?= $(PREFIX)/lib/systemd/user
 ifneq ("$(wildcard target/release/stt-daemon)","")
 	DAEMON_BIN = target/release/stt-daemon
 	CLIENT_BIN = target/release/stt-client
+	MANAGER_BIN = target/release/stt-model-manager
 else
 	DAEMON_BIN = bin/stt-daemon
 	CLIENT_BIN = bin/stt-client
+	MANAGER_BIN = bin/stt-model-manager
 endif
 
 .PHONY: all build clean install
@@ -34,8 +36,10 @@ install:
 	@if [ ! -f "$(DAEMON_BIN)" ]; then echo "Error: $(DAEMON_BIN) not found. Run make build or ./scripts/build"; exit 1; fi
 	install -Dm755 $(DAEMON_BIN) $(DESTDIR)$(BINDIR)/stt-daemon
 	install -Dm755 $(CLIENT_BIN) $(DESTDIR)$(BINDIR)/stt-client
+	install -Dm755 $(MANAGER_BIN) $(DESTDIR)$(BINDIR)/stt-model-manager
 	install -Dm644 systemd/stt-daemon.service $(DESTDIR)$(SYSTEMD_USER_DIR)/stt-daemon.service
 	install -Dm644 systemd/stt-assistant.service $(DESTDIR)$(SYSTEMD_USER_DIR)/stt-assistant.service
+	install -Dm644 stt-assistant.toml $(DESTDIR)/etc/stt-assistant.toml
 	mkdir -p $(DESTDIR)$(DATADIR)/stt-assistant/models
 	if [ -f "models/ggml-base.bin" ]; then \
 		install -Dm644 models/ggml-base.bin $(DESTDIR)$(DATADIR)/stt-assistant/models/ggml-base.bin; \

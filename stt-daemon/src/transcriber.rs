@@ -23,7 +23,7 @@ impl Transcriber {
         Ok(Self { ctx })
     }
 
-    pub fn transcribe(&mut self, audio_data: &[f32]) -> Result<String> {
+    pub fn transcribe(&mut self, audio_data: &[f32], language: Option<&str>) -> Result<String> {
         let mut state = self
             .ctx
             .create_state()
@@ -31,7 +31,7 @@ impl Transcriber {
 
         // Configure parameters
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-        params.set_language(Some("es")); // Spanish hardcoded for now or make it configurable
+        params.set_language(Some(language.unwrap_or("es")));
         params.set_print_special(false);
         params.set_print_progress(false);
         params.set_print_realtime(false);
