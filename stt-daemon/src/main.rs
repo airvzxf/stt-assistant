@@ -28,7 +28,7 @@ async fn notify_client_auto_stop() {
 }
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about = "STT Assistant Daemon - Background transcription service", long_about = None)]
 struct Args {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -56,7 +56,9 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    /// Show daemon status and configuration
     Status,
+    /// Reload configuration and restart the model if needed
     Refresh,
 }
 

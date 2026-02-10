@@ -7,7 +7,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about = "STT Assistant Model Manager - Download and manage Whisper models", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
