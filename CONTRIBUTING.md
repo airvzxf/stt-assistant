@@ -48,8 +48,24 @@ makepkg -si
 - `stt-client`: GTK4 client for UI feedback.
 - `stt-model-manager`: Tool for managing Whisper models.
 - `scripts/build`: Main build script (wraps Podman).
+- `scripts/compatibility/`: Multi-distribution test matrix (Infrastructure as Code).
 - `pkg/`: Arch Linux packaging files.
 - `systemd/`: Service units.
+
+## Testing Compatibility
+
+Before releasing a major change, verify that the binaries work across different Linux families using the integrated test matrix:
+
+```bash
+# 1. Build the matrix infrastructure (requires distrobox)
+distrobox-assemble create --file scripts/compatibility/distrobox.ini
+
+# 2. Run automated verification in a specific distro
+distrobox enter stt-debian -- ./scripts/compatibility/verify.sh
+distrobox enter stt-fedora -- ./scripts/compatibility/verify.sh
+```
+
+See [COMPATIBILITY.md](COMPATIBILITY.md) for more details.
 
 ## Working with Models (Development)
 

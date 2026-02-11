@@ -40,7 +40,7 @@ time podman run --rm \
     --entrypoint sh \
     -v "$(pwd):/app_out" \
     "${IMAGE_NAME}" \
-    -c "cp /app/stt-daemon /app_out/bin/stt-daemon && cp /app/stt-client /app_out/bin/stt-client && cp /app/stt-model-manager /app_out/bin/stt-model-manager"
+    -c "cp /app/stt-* /app_out/bin/ && cp -P /usr/lib/x86_64-linux-gnu/libgtk4-layer-shell.so* /app_out/bin/"
 
 echo "--> Done! Binaries extracted to bin/"
 echo "--> To install: cd pkg && makepkg -si"

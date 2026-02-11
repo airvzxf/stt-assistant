@@ -8,6 +8,7 @@ A professional Speech-to-Text Assistant for Linux, featuring a high-performance 
 - **Model Manager**: Integrated CLI tool to download and manage Whisper models (Tiny, Base, Small, etc.).
 - **Client**: GTK4 Layer Shell interface for seamless desktop integration.
 - **Packaging**: Ready for Arch Linux (PKGBUILD provided).
+- **Multi-Distribution Support**: Verified on Arch, Fedora, and Debian using an automated test matrix.
 
 ## Installation (Arch Linux)
 
