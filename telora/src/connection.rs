@@ -3,8 +3,8 @@ use std::path::Path;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 
-pub const DAEMON_SOCKET: &str = "/tmp/stt-sock";
-pub const CONTROL_SOCKET: &str = "/tmp/stt-control.sock";
+pub const DAEMON_SOCKET: &str = "/tmp/telora-sock";
+pub const CONTROL_SOCKET: &str = "/tmp/telora-control.sock";
 
 pub struct SocketClient;
 

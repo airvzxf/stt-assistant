@@ -1,4 +1,4 @@
-# STT Assistant
+# Telora
 
 A professional Speech-to-Text Assistant for Linux, featuring a high-performance Rust daemon using Whisper (CUDA-accelerated) and a lightweight GTK4 client.
 
@@ -33,17 +33,17 @@ makepkg -si
 You can configure the daemon using a TOML file. The daemon looks for configuration in the following order:
 
 1.  **CLI Arguments**: (e.g., `--config my_config.toml` or `--language en`)
-2.  **User Config**: `~/.config/stt-assistant/config.toml`
-3.  **System Config**: `/etc/stt-assistant.toml`
-4.  **Environment Variables**: (e.g., `STT_LANGUAGE=fr`)
+2.  **User Config**: `~/.config/telora/config.toml`
+3.  **System Config**: `/etc/telora.toml`
+4.  **Environment Variables**: (e.g., `TELORA_LANGUAGE=fr`)
 
 ### Example Configuration (`config.toml`)
 
 ```toml
 # Path to the model file.
 # Can be an absolute path, or relative to:
-# - $HOME/.local/share/stt-assistant/models/
-# - /usr/share/stt-assistant/models/
+# - $HOME/.local/share/telora/models/
+# - /usr/share/telora/models/
 # - ./models/
 model_path = "ggml-base.bin"
 
@@ -66,7 +66,7 @@ If you need to change how the services start (e.g., adding environment variables
 
 1.  Create an override for the user service:
     ```bash
-    systemctl --user edit stt-daemon.service
+    systemctl --user edit telora-daemon.service
     ```
 2.  Add your changes in the editor that opens:
     ```ini
@@ -76,45 +76,45 @@ If you need to change how the services start (e.g., adding environment variables
 3.  Save and exit. Systemd will automatically reload.
 4.  Restart the service:
     ```bash
-    systemctl --user restart stt-daemon.service
+    systemctl --user restart telora-daemon.service
     ```
 
 This method preserves your changes even if the main package updates the service file.
 
 ## Client CLI & Controls
 
-The `stt-client` now supports CLI commands for integration with shortcuts or scripts:
+The `telora` now supports CLI commands for integration with shortcuts or scripts:
 
 ```bash
 # Toggle recording and TYPE the result
-stt-client toggle-type
+telora toggle-type
 
 # Toggle recording and COPY the result to clipboard
-stt-client toggle-copy
+telora toggle-copy
 
 # Cancel current recording
-stt-client cancel
+telora cancel
 ```
 
-Run `stt-client --help` for more details.
+Run `telora --help` for more details.
 
 ## Daemon Status & Monitoring
 
 You can check the real-time status of the audio daemon (PID, current model, language, state, etc.) by running:
 
 ```bash
-stt-daemon status
+telora-daemon status
 ```
 
 **Example Output:**
 
 ```text
-STT Daemon Status
+Telora Daemon Status
 ACTIVE     PID        MODEL                          LANG       MAX_SEC    STATE
 ---------- ---------- ------------------------------ ---------- ---------- ---------------
 YES        1234       ggml-base.bin                  es         300        Idle
 
-Full Model Path: /usr/share/stt-assistant/models/ggml-base.bin
+Full Model Path: /usr/share/telora/models/ggml-base.bin
 ```
 
 ## Security & Privacy
@@ -125,26 +125,26 @@ Full Model Path: /usr/share/stt-assistant/models/ggml-base.bin
 
 ## Model Management
 
-Use `stt-model-manager` to download and manage Whisper models:
+Use `telora-models` to download and manage Whisper models:
 
 ```bash
 # List available and installed models
-stt-model-manager list
+telora-models list
 
 # Download a predefined model
-stt-model-manager download base
+telora-models download base
 
 # Download ANY model from whisper.cpp HuggingFace repo (e.g. large-v3-turbo-q8_0)
-stt-model-manager download large-v3-turbo-q8_0
+telora-models download large-v3-turbo-q8_0
 
 # Download from a custom URL
-stt-model-manager download --url https://example.com/models/custom-whisper.bin
+telora-models download --url https://example.com/models/custom-whisper.bin
 
 # Specify a custom output name
-stt-model-manager download base --out my-model.bin
+telora-models download base --out my-model.bin
 
 # Download a model for all users (requires sudo)
-sudo stt-model-manager download base --global
+sudo telora-models download base --global
 ```
 
 ### Model Resolution (Precedence)
@@ -152,8 +152,8 @@ sudo stt-model-manager download base --global
 When you specify a model (via CLI `--model` or TOML `model_path`), the daemon resolves the path using the following priority:
 
 1.  **Explicit Path**: If you provide a full or relative path (e.g., `./my-models/tiny.bin`), it is used directly.
-2.  **User Models**: `~/.local/share/stt-assistant/models/`
-3.  **System Models**: `/usr/share/stt-assistant/models/`
+2.  **User Models**: `~/.local/share/telora/models/`
+3.  **System Models**: `/usr/share/telora/models/`
 4.  **Local Development**: `./models/` (current working directory)
 
 **Note:** If two models have the same name, the **User** version shadows the **System** version.
@@ -163,10 +163,10 @@ When you specify a model (via CLI `--model` or TOML `model_path`), the daemon re
 Start the assistant (this will automatically start the background daemon):
 
 ```bash
-systemctl --user enable --now stt-assistant.service
+systemctl --user enable --now telora.service
 ```
 
-The `stt-assistant` service manages the UI and requires `stt-daemon` (the audio engine), which systemd will handle for you.
+The `telora` service manages the UI and requires `telora-daemon` (the audio engine), which systemd will handle for you.
 
 ## Development
 

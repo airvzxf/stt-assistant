@@ -1,5 +1,5 @@
 [package]
-name = "stt-daemon"
+name = "telora-daemon"
 version.workspace = true
 edition.workspace = true
 

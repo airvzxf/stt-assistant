@@ -1,5 +1,5 @@
 [package]
-name = "stt-model-manager"
+name = "telora-models"
 version.workspace = true
 edition.workspace = true
 

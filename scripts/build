@@ -1,47 +1,31 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
+set -e
 
-# Ensure we are in the project root
-cd "$(dirname "$0")/.."
+# Configuration
+IMAGE_NAME="telora-daemon:latest"
+CONTAINER_ENGINE=$(command -v podman || command -v docker)
 
-# Build script for STT Rust workspace
-IMAGE_NAME="stt-daemon:latest"
-
-# Detect GPU architecture (GTX 1080 -> sm_61)
-DETECTED_ARCH="61"
-if command -v nvidia-smi &> /dev/null; then
-    RAW_ARCH=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n 1 | tr -d '.')
-    if [[ -n "${RAW_ARCH}" ]]; then
-        DETECTED_ARCH="${RAW_ARCH}"
-        echo "--> GPU architecture detected: ${DETECTED_ARCH}"
-    fi
+if [ -z "$CONTAINER_ENGINE" ]; then
+    echo "Error: Podman or Docker is required."
+    exit 1
 fi
 
-TARGET_ARCH="${1:-${DETECTED_ARCH}}"
-echo "--> Building container for architecture: ${TARGET_ARCH}"
+echo "--> Using $CONTAINER_ENGINE to build Telora"
 
-# Format source files
-echo "--> Formatting source files..."
-time podman run --rm \
-    -v "$(pwd):/app:z" \
-    -w /app \
-    docker.io/library/rust:latest \
-    bash -c "rustup component add rustfmt && cargo fmt --all"
+# Build the container
+$CONTAINER_ENGINE build -t "$IMAGE_NAME" .
 
-# Build container image
-time podman build \
-    --build-arg CUDA_ARCH="${TARGET_ARCH}" \
-    -t "${IMAGE_NAME}" .
-
-# Extract binaries
-echo "--> Extracting binaries..."
+# Create bin directory if it doesn't exist
 mkdir -p bin
-time podman run --rm \
-    --entrypoint sh \
-    -v "$(pwd):/app_out" \
-    "${IMAGE_NAME}" \
-    -c "cp /app/stt-* /app_out/bin/ && cp -P /usr/lib/x86_64-linux-gnu/libgtk4-layer-shell.so* /app_out/bin/"
 
-echo "--> Done! Binaries extracted to bin/"
-echo "--> To install: cd pkg && makepkg -si"
-echo "--> Or run manually: ./bin/stt-daemon"
+# Extract the binaries
+echo "--> Extracting binaries to ./bin/"
+$CONTAINER_ENGINE run --rm --entrypoint /bin/sh "$IMAGE_NAME" -c "cat /usr/bin/telora-daemon" > bin/telora-daemon
+$CONTAINER_ENGINE run --rm --entrypoint /bin/sh "$IMAGE_NAME" -c "cat /usr/bin/telora" > bin/telora
+$CONTAINER_ENGINE run --rm --entrypoint /bin/sh "$IMAGE_NAME" -c "cat /usr/bin/telora-models" > bin/telora-models
+
+chmod +x bin/telora-daemon bin/telora bin/telora-models
+
+echo "--> Build complete!"
+echo "--> Binaries are in ./bin/"
+echo "--> Or run manually: ./bin/telora-daemon"

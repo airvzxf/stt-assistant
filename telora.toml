@@ -1,0 +1,13 @@
+# Path to the model file.
+# Can be an absolute path, or relative to:
+# - $HOME/.local/share/telora/models/
+# - /usr/share/telora/models/
+# - ./models/
+model_path = "ggml-base.bin"
+
+# Language code (e.g., "es", "en", "fr")
+# This is passed to the Whisper model.
+language = "es"
+
+# Maximum recording time in seconds.
+max_recording_seconds = 300

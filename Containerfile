@@ -7,7 +7,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
     CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH}
 
 # 1. SETUP: System Deps + GTK4 Layer Shell + Rust
-# Combined to create a single cached layer for the environment.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     pkg-config \
@@ -39,29 +38,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # 2. DEPENDENCIES: Manifests
-# We must keep these separate to preserve the dependency compilation cache.
-# If we merged them, any change to a Cargo.toml would invalidate the whole dependency build.
 COPY Cargo.toml Cargo.lock ./
-COPY stt-daemon/Cargo.toml ./stt-daemon/
-COPY stt-client/Cargo.toml ./stt-client/
-COPY stt-model-manager/Cargo.toml ./stt-model-manager/
+COPY telora-daemon/Cargo.toml ./telora-daemon/
+COPY telora/Cargo.toml ./telora/
+COPY telora-models/Cargo.toml ./telora-models/
 
 # 3. CACHE: Compile dependencies with dummy sources
-RUN mkdir -p stt-daemon/src stt-client/src stt-model-manager/src && \
-    echo "fn main() {}" > stt-daemon/src/main.rs && \
-    echo "fn main() {}" > stt-client/src/main.rs && \
-    echo "fn main() {}" > stt-model-manager/src/main.rs && \
+RUN mkdir -p telora-daemon/src telora/src telora-models/src && \
+    echo "fn main() {}" > telora-daemon/src/main.rs && \
+    echo "fn main() {}" > telora/src/main.rs && \
+    echo "fn main() {}" > telora-models/src/main.rs && \
     cargo build --release --workspace && \
-    rm -rf stt-daemon/src stt-client/src stt-model-manager/src
+    rm -rf telora-daemon/src telora/src telora-models/src
 
 # 4. SOURCE: Copy entire project context
-# Using 'COPY . .' is much faster (1 layer) than copying folders individually.
-# .dockerignore ensures we don't copy 'target/', '.git/', etc.
 COPY . .
 
 # 5. BUILD: Final compilation
-# We force 'touch' to ensure Cargo detects file changes over the dummy files.
-RUN touch stt-daemon/src/main.rs stt-client/src/main.rs stt-model-manager/src/main.rs && \
+RUN touch telora-daemon/src/main.rs telora/src/main.rs telora-models/src/main.rs && \
     cargo clippy --release --workspace -- -D warnings && \
     cargo build --release --workspace
 
@@ -80,21 +74,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && echo 'ctl.!default { type pulse }' >> /etc/asound.conf
 
 # 7. ARTIFACTS: Gather all artifacts in one go
-# We copy libs and binaries to a temporary staging area in a SINGLE layer
-# to avoid multiple 'commit' overheads.
 COPY --from=builder \
     /usr/lib/x86_64-linux-gnu/libgtk4-layer-shell.so* \
     /usr/lib/x86_64-linux-gnu/girepository-1.0/Gtk4LayerShell-1.0.typelib \
-    /app/target/release/stt-daemon \
-    /app/target/release/stt-client \
-    /app/target/release/stt-model-manager \
+    /app/target/release/telora-daemon \
+    /app/target/release/telora \
+    /app/target/release/telora-models \
     /tmp/artifacts/
 
 # 8. INSTALL: Move artifacts to final locations
 RUN mkdir -p /usr/lib/x86_64-linux-gnu/girepository-1.0/ && \
     mv /tmp/artifacts/libgtk4-layer-shell* /usr/lib/x86_64-linux-gnu/ && \
     mv /tmp/artifacts/Gtk4LayerShell-1.0.typelib /usr/lib/x86_64-linux-gnu/girepository-1.0/ && \
-    mv /tmp/artifacts/stt-* . && \
+    mv /tmp/artifacts/telora* /usr/bin/ && \
     rm -rf /tmp/artifacts
 
-ENTRYPOINT ["./stt-daemon"]
+ENTRYPOINT ["/usr/bin/telora-daemon"]

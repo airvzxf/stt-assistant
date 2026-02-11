@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["stt-daemon", "stt-client", "stt-model-manager"]
+members = ["telora-daemon", "telora", "telora-models"]
 
 [workspace.package]
 version = "0.1.0"

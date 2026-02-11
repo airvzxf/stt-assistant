@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# scripts/clean - Restore the project to a clean state by removing generated artifacts
+
+set -euo pipefail
+
+# Get project root
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJECT_ROOT"
+
+echo "--> Starting project cleanup..."
+
+# 1. Remove Rust build artifacts
+if [ -d "target" ]; then
+    echo "    Removing target/ directory..."
+    rm -rf target/
+fi
+
+# 2. Remove extracted binaries
+if [ -d "bin" ]; then
+    echo "    Removing bin/ directory..."
+    rm -rf bin/
+fi
+
+# 3. Remove Arch Linux packaging artifacts
+# We keep PKGBUILD and telora.install as they are source files
+if [ -d "pkg" ]; then
+    echo "    Cleaning Arch Linux packaging files in pkg/..."
+    rm -rf pkg/src/
+    rm -rf pkg/pkg/
+    rm -f pkg/*.pkg.tar.zst
+    rm -f pkg/*.pkg.tar.xz
+    rm -f pkg/*.pkg.tar.gz
+fi
+
+# 4. Remove logs and temporary files
+echo "    Removing logs and temporary files..."
+rm -f *.log
+rm -rf tmp/
+rm -rf *_install/
+
+# 5. Remove whisper models if they exist (ignored by git)
+if [ -d "models" ]; then
+    echo "    Removing models/ directory (Whisper models)..."
+    rm -rf models/
+fi
+
+# 6. Inform about container images (not removed automatically as it might be invasive/slow)
+if command -v podman &>/dev/null || command -v docker &>/dev/null; then
+    CONTAINER_ENGINE=$(command -v podman || command -v docker)
+    if $CONTAINER_ENGINE images | grep -q "telora-daemon"; then
+        echo -e "
+[!] Note: Container image 'telora-daemon' still exists in $CONTAINER_ENGINE."
+        echo "    To remove it manually: $CONTAINER_ENGINE rmi telora-daemon:latest"
+    fi
+fi
+
+echo -e "
+--> Cleanup complete. Project is in a clean state."

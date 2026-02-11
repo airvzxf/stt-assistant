@@ -16,7 +16,7 @@ use connection::{ControlServer, SocketClient};
 use ui::Osd;
 
 #[derive(Parser)]
-#[command(author, version, about = "STT Assistant Client - GUI and Control CLI", long_about = None)]
+#[command(author, version, about = "Telora Client - GUI and Control CLI", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -74,7 +74,7 @@ fn main() {
 
     // Initialize GTK Application
     let app = Application::builder()
-        .application_id("com.stt.client")
+        .application_id("io.github.telora.client")
         .build();
 
     app.connect_activate(move |app| {

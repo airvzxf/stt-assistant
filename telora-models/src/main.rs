@@ -7,7 +7,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
-#[command(author, version, about = "STT Assistant Model Manager - Download and manage Whisper models", long_about = None)]
+#[command(author, version, about = "Telora Model Manager - Download and manage Whisper models", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -24,7 +24,7 @@ enum Commands {
         /// Force re-download
         #[arg(short, long)]
         force: bool,
-        /// Download to global system directory (/usr/share/stt-assistant/models)
+        /// Download to global system directory (/usr/share/telora/models)
         #[arg(short, long)]
         global: bool,
         /// Custom URL to download from
@@ -74,13 +74,13 @@ const MODELS: &[ModelInfo] = &[
 
 fn get_local_models_dir() -> Result<PathBuf> {
     let mut path = dirs::data_local_dir().context("Could not find local data directory")?;
-    path.push("stt-assistant");
+    path.push("telora");
     path.push("models");
     Ok(path)
 }
 
 fn get_global_models_dir() -> PathBuf {
-    PathBuf::from("/usr/share/stt-assistant/models")
+    PathBuf::from("/usr/share/telora/models")
 }
 
 #[tokio::main]
@@ -112,7 +112,7 @@ async fn main() -> Result<()> {
                 );
             }
 
-            println!("\nNote: stt-daemon prioritizes LOCAL models over GLOBAL ones.");
+            println!("\nNote: telora-daemon prioritizes LOCAL models over GLOBAL ones.");
         }
         Commands::Path => {
             println!("Local:  {}", get_local_models_dir()?.display());

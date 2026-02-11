@@ -1,5 +1,5 @@
 [package]
-name = "stt-client"
+name = "telora"
 version.workspace = true
 edition.workspace = true
 

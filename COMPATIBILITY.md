@@ -25,18 +25,33 @@ First, ensure you have the latest standalone binaries:
 ### 2. Assemble the Test Matrix
 Create the verified containers using Distrobox (requires `podman` or `docker`):
 ```bash
-distrobox-assemble create --file scripts/compatibility/distrobox.ini
+distrobox-assemble create --replace --file scripts/compatibility/distrobox.ini
 ```
 
 ### 3. Run Automated Verification
-You can run the verification script inside any of the containers:
+You can run the verification script inside any of the containers. The script will automatically install dependencies using `setup-env.sh` on the first run:
 ```bash
 # Example for Debian
-distrobox enter stt-debian -- ./scripts/compatibility/verify.sh
+distrobox enter telora-debian -- ./scripts/compatibility/verify.sh
 
 # Example for Fedora
-distrobox enter stt-fedora -- ./scripts/compatibility/verify.sh
+distrobox enter telora-fedora -- ./scripts/compatibility/verify.sh
+
+# Example for Arch Linux
+distrobox enter telora-arch -- ./scripts/compatibility/verify.sh
 ```
+
+### 4. Full Stack Simulation
+To test the full interaction (Daemon + UI) and simulate a transcription session within a container:
+
+```bash
+# This will run the daemon, start a recording, wait 4s, and stop it.
+distrobox enter telora-fedora -- ./scripts/compatibility/simulate.sh
+```
+
+> [!TIP]
+> If the simulation fails or hangs in an infinite loop, you can restore the container state by running:
+> `podman container restart telora-fedora` (or the corresponding container name).
 
 ## Known Limitations
 

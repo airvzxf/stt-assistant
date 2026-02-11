@@ -1,0 +1,12 @@
+[Unit]
+Description=Telora Audio Daemon (Whisper)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/telora-daemon
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

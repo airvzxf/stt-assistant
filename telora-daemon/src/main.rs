@@ -18,8 +18,8 @@ use socket::{Command, SocketServer, StatusResponse, SttConfig};
 use transcriber::Transcriber;
 
 // Config references
-const SOCKET_PATH: &str = "/tmp/stt-sock";
-const CONTROL_SOCKET: &str = "/tmp/stt-control.sock";
+const SOCKET_PATH: &str = "/tmp/telora-sock";
+const CONTROL_SOCKET: &str = "/tmp/telora-control.sock";
 
 async fn notify_client_auto_stop() {
     if let Ok(mut stream) = UnixStream::connect(CONTROL_SOCKET).await {
@@ -28,7 +28,7 @@ async fn notify_client_auto_stop() {
 }
 
 #[derive(Parser, Debug)]
-#[command(author, version, about = "STT Assistant Daemon - Background transcription service", long_about = None)]
+#[command(author, version, about = "Telora Daemon - Background transcription service", long_about = None)]
 struct Args {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -39,8 +39,8 @@ struct Args {
 
     /// Path or name of the model file (overrides config).
     /// If a name is provided (e.g., 'ggml-base.bin'), it searches in order:
-    /// 1. ~/.local/share/stt-assistant/models/
-    /// 2. /usr/share/stt-assistant/models/
+    /// 1. ~/.local/share/telora/models/
+    /// 2. /usr/share/telora/models/
     /// 3. ./models/
     #[arg(short, long)]
     model: Option<String>,
@@ -75,12 +75,12 @@ fn load_config(args: &Args) -> SttConfig {
     // Load configuration from multiple sources in order of precedence (last one wins)
     let mut builder = Config::builder();
 
-    // 1. System config (/etc/stt-assistant.toml) - Lowest priority
-    builder = builder.add_source(File::with_name("/etc/stt-assistant.toml").required(false));
+    // 1. System config (/etc/telora.toml) - Lowest priority
+    builder = builder.add_source(File::with_name("/etc/telora.toml").required(false));
 
-    // 2. User config (~/.config/stt-assistant/config.toml)
+    // 2. User config (~/.config/telora/config.toml)
     builder = builder.add_source(
-        File::with_name(&format!("{}/.config/stt-assistant/config.toml", home)).required(false),
+        File::with_name(&format!("{}/.config/telora/config.toml", home)).required(false),
     );
 
     // 3. Explicit config file via CLI --config
@@ -89,7 +89,7 @@ fn load_config(args: &Args) -> SttConfig {
     }
 
     // 4. Environment variables - Highest priority
-    builder = builder.add_source(config::Environment::with_prefix("STT"));
+    builder = builder.add_source(config::Environment::with_prefix("TELORA"));
 
     let config_res = builder.build();
     let mut stt_config: SttConfig = match config_res {
@@ -132,8 +132,8 @@ fn load_config(args: &Args) -> SttConfig {
         };
 
         let candidates = vec![
-            format!("{}/.local/share/stt-assistant/models/{}", home, filename),
-            format!("/usr/share/stt-assistant/models/{}", filename),
+            format!("{}/.local/share/telora/models/{}", home, filename),
+            format!("/usr/share/telora/models/{}", filename),
             format!("models/{}", filename),
             filename.to_string(),
         ];
@@ -182,7 +182,7 @@ async fn run_status_client() -> Result<()> {
     let mut stream = match UnixStream::connect(SOCKET_PATH).await {
         Ok(s) => s,
         Err(_) => {
-            println!("STT Daemon Status");
+            println!("Telora Daemon Status");
             println!(
                 "{:<10} {:<10} {:<30} {:<10} {:<10} {:<15}",
                 "ACTIVE", "PID", "MODEL", "LANG", "MAX_SEC", "STATE"
@@ -230,7 +230,7 @@ async fn run_status_client() -> Result<()> {
         }
     };
 
-    println!("STT Daemon Status");
+    println!("Telora Daemon Status");
     println!(
         "{:<10} {:<10} {:<30} {:<10} {:<10} {:<15}",
         "ACTIVE", "PID", "MODEL", "LANG", "MAX_SEC", "STATE"
@@ -288,7 +288,7 @@ async fn main() -> Result<()> {
 
     let mut stt_config = load_config(&args);
 
-    info!("Starting STT Daemon...");
+    info!("Starting Telora Daemon...");
     info!("Using model: {}", stt_config.model_path);
     info!("Language: {}", stt_config.language);
 

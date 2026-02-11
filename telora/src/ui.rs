@@ -33,7 +33,7 @@ impl Osd {
         window.set_margin(Edge::Bottom, 20);
         window.set_margin(Edge::Right, 20);
 
-        let label = Label::new(Some("STT Ready"));
+        let label = Label::new(Some("Telora Ready"));
         label.set_margin_top(10);
         label.set_margin_bottom(10);
         label.set_margin_start(20);

@@ -1,32 +1,24 @@
 # Maintainer: Wolf <wolf@localhost>
-pkgname=stt-assistant-bin
+pkgname=telora-bin
 pkgver=0.1.0
 pkgrel=1
-pkgdesc="Speech-to-Text Assistant (Pre-built binaries)"
+pkgdesc="Telora: Professional Speech-to-Text Assistant (Pre-built binaries)"
 arch=('x86_64')
-url="https://github.com/yourusername/stt-assistant"
+url="https://github.com/yourusername/telora"
 license=('MIT')
 depends=('gtk4' 'gtk4-layer-shell' 'alsa-lib' 'gcc-libs')
-# Removed cuda from depends because it might be statically linked or optional in runtime container, 
-# but user environment suggests nvidia/cuda base.
-# For arch package, if it links against system libs, we need them.
-# The container build used nvidia/cuda:12.9.1-cudnn-devel.
-# The binaries likely depend on libcuda.so.1 (driver) and maybe cudart if dynamic.
-# We'll keep basic deps.
 makedepends=('make')
+install='telora.install'
 source=()
 sha256sums=()
 
 prepare() {
-    # No preparation needed for pre-built
     true
 }
 
 build() {
-    # Binaries are assumed to be built via ./scripts/build
-    # and placed in bin/
     cd "$startdir/.."
-    if [ ! -f "bin/stt-daemon" ] || [ ! -f "bin/stt-client" ] || [ ! -f "bin/stt-model-manager" ]; then
+    if [ ! -f "bin/telora-daemon" ] || [ ! -f "bin/telora" ] || [ ! -f "bin/telora-models" ]; then
         echo "Binaries not found in bin/. Please run ./scripts/build first."
         return 1
     fi

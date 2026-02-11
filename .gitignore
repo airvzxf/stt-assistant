@@ -28,4 +28,4 @@ pkg/src/
 pkg/pkg/
 pkg/*.pkg.tar.zst
 pkg/*.pkg.tar.xz
-pkg/stt-assistant-*/
+pkg/telora-*/

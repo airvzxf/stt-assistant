@@ -1,46 +1,34 @@
-PREFIX ?= /usr/local
+# Makefile for Telora
+
+PREFIX ?= /usr
 BINDIR ?= $(PREFIX)/bin
 DATADIR ?= $(PREFIX)/share
-
-# Arch Linux convention: /usr/lib/systemd/user for package installed units
 SYSTEMD_USER_DIR ?= $(PREFIX)/lib/systemd/user
 
-# Detect source of binaries (Source build > Container build)
-ifneq ("$(wildcard target/release/stt-daemon)","")
-	DAEMON_BIN = target/release/stt-daemon
-	CLIENT_BIN = target/release/stt-client
-	MANAGER_BIN = target/release/stt-model-manager
+# Binary names
+ifneq ("$(wildcard target/release/telora-daemon)","")
+    DAEMON_BIN = target/release/telora-daemon
+    CLIENT_BIN = target/release/telora
+    MANAGER_BIN = target/release/telora-models
 else
-	DAEMON_BIN = bin/stt-daemon
-	CLIENT_BIN = bin/stt-client
-	MANAGER_BIN = bin/stt-model-manager
+    DAEMON_BIN = bin/telora-daemon
+    CLIENT_BIN = bin/telora
+    MANAGER_BIN = bin/telora-models
 endif
 
-.PHONY: all build clean install
+.PHONY: all install clean
 
-all: build
-
-build:
-	@echo "Note: Use ./scripts/build for containerized build."
-	@if command -v cargo >/dev/null 2>&1; then \
-		cargo build --release; \
-	else \
-		echo "Cargo not found. Skipping local build. Ensure binaries are in bin/ directory."; \
-	fi
-
-clean:
-	cargo clean || true
-	rm -rf bin/
+all:
+	@echo "Use ./scripts/build to compile the project."
 
 install:
-	@if [ ! -f "$(DAEMON_BIN)" ]; then echo "Error: $(DAEMON_BIN) not found. Run make build or ./scripts/build"; exit 1; fi
-	install -Dm755 $(DAEMON_BIN) $(DESTDIR)$(BINDIR)/stt-daemon
-	install -Dm755 $(CLIENT_BIN) $(DESTDIR)$(BINDIR)/stt-client
-	install -Dm755 $(MANAGER_BIN) $(DESTDIR)$(BINDIR)/stt-model-manager
-	install -Dm644 systemd/stt-daemon.service $(DESTDIR)$(SYSTEMD_USER_DIR)/stt-daemon.service
-	install -Dm644 systemd/stt-assistant.service $(DESTDIR)$(SYSTEMD_USER_DIR)/stt-assistant.service
-	install -Dm644 stt-assistant.toml $(DESTDIR)/etc/stt-assistant.toml
-	mkdir -p $(DESTDIR)$(DATADIR)/stt-assistant/models
-	if [ -f "models/ggml-base.bin" ]; then \
-		install -Dm644 models/ggml-base.bin $(DESTDIR)$(DATADIR)/stt-assistant/models/ggml-base.bin; \
-	fi
+	install -Dm755 $(DAEMON_BIN) $(DESTDIR)$(BINDIR)/telora-daemon
+	install -Dm755 $(CLIENT_BIN) $(DESTDIR)$(BINDIR)/telora
+	install -Dm755 $(MANAGER_BIN) $(DESTDIR)$(BINDIR)/telora-models
+	install -Dm644 systemd/telora-daemon.service $(DESTDIR)$(SYSTEMD_USER_DIR)/telora-daemon.service
+	install -Dm644 systemd/telora.service $(DESTDIR)$(SYSTEMD_USER_DIR)/telora.service
+	install -Dm644 telora.toml $(DESTDIR)/etc/telora.toml
+	mkdir -p $(DESTDIR)$(DATADIR)/telora/models
+
+clean:
+	./scripts/clean

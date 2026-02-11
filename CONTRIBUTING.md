@@ -1,86 +1,56 @@
-# Contributing
+# Contributing to Telora
 
-This guide is for developers who want to modify and test STT Assistant on Arch Linux.
+Thank you for your interest in improving Telora!
 
-## Prerequisites
+## Project Structure
 
-To build and run this project, you need:
-- **Podman**: For the containerized build (recommended).
-- **Nvidia Drivers**: Since the daemon uses CUDA.
-- **GTK4**: For the client.
+- `telora-daemon`: Rust daemon handling audio input and Whisper transcription (CUDA).
+- `telora`: GTK4 client for UI feedback and control.
+- `telora-models`: Tool for managing Whisper models.
+- `pkg/`: Arch Linux packaging files.
+- `scripts/`: Build and verification scripts.
 
-### Arch Linux Dependencies
-Install the required runtime libraries:
-```bash
-sudo pacman -S gtk4 alsa-lib gcc-libs
-# Note: gtk4-layer-shell may need to be installed from AUR (e.g., yay -S gtk4-layer-shell)
-```
+## Development Workflow
 
-## Build & Installation (Developer Mode)
+### 1. Prerequisites
+- Rust (Edition 2024)
+- Podman (for containerized builds)
+- GTK4 and Layer Shell libraries (if building locally)
+- CUDA Toolkit (for GPU acceleration)
 
-### 1. Build Binaries
-The easiest way to build without worrying about local toolchains (CUDA/Clang) is using the provided script:
+### 2. Building
+The recommended way to build is using the provided script, which ensures a consistent environment:
 ```bash
 ./scripts/build
 ```
-This puts the binaries in `bin/`.
 
-### 2. Local Installation (User level)
-For development, you might prefer installing to your home directory instead of system-wide:
+### 3. Local Testing
+You can run the binaries directly from the `bin/` directory after building:
 ```bash
-make PREFIX=$HOME/.local install
+# Start the daemon
+./bin/telora-daemon --model ./models/ggml-base.bin
+
+# In another terminal, run the client
+./bin/telora
 ```
-Then update your systemd user units:
-```bash
-systemctl --user daemon-reload
-```
-
-### 3. System Packaging (Professional)
-To verify the Arch Linux package:
-```bash
-cd pkg
-makepkg -si
-```
-
-## Structure
-
-- `stt-daemon`: Rust daemon handling audio input and Whisper transcription (CUDA).
-- `stt-client`: GTK4 client for UI feedback.
-- `stt-model-manager`: Tool for managing Whisper models.
-- `scripts/build`: Main build script (wraps Podman).
-- `scripts/compatibility/`: Multi-distribution test matrix (Infrastructure as Code).
-- `pkg/`: Arch Linux packaging files.
-- `systemd/`: Service units.
-
-## Testing Compatibility
-
-Before releasing a major change, verify that the binaries work across different Linux families using the integrated test matrix:
-
-```bash
-# 1. Build the matrix infrastructure (requires distrobox)
-distrobox-assemble create --file scripts/compatibility/distrobox.ini
-
-# 2. Run automated verification in a specific distro
-distrobox enter stt-debian -- ./scripts/compatibility/verify.sh
-distrobox enter stt-fedora -- ./scripts/compatibility/verify.sh
-```
-
-See [COMPATIBILITY.md](COMPATIBILITY.md) for more details.
-
-## Working with Models (Development)
-
-During development, you can test specific models without installing them:
-
-1.  **Place models in the root `models/` directory**: The daemon will find them there if they are not in your home directory.
-2.  **Use explicit paths**:
-    ```bash
-    ./bin/stt-daemon --model ./my-experimental-models/ggml-base.bin
-    ```
-3.  **Override via Environment**:
-    ```bash
-    STT_MODEL_PATH=/path/to/model.bin ./bin/stt-daemon
-    ```
 
 ## Coding Standards
-- Run `cargo fmt` before committing.
-- Ensure `cargo clippy` passes (it is checked during `./scripts/build`).
+
+- **Rust**: Follow idiomatic Rust patterns. Use `cargo fmt` and `cargo clippy`.
+- **Commits**: Use descriptive commit messages. Follow the format: `type: Description` (e.g., `fix: Audio buffer overflow`).
+- **Privacy**: Never introduce code that logs transcriptions or sends data to external servers. Telora is strictly local.
+
+## Debugging
+
+To enable debug logs, use the `RUST_LOG` environment variable:
+```bash
+RUST_LOG=debug ./bin/telora-daemon
+```
+
+You can also override the model path for testing:
+```bash
+TELORA_MODEL_PATH=/path/to/model.bin ./bin/telora-daemon
+```
+
+## Questions?
+Feel free to open an issue or a discussion on GitHub.
