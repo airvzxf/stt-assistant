@@ -34,6 +34,13 @@ You can run the binaries directly from the `bin/` directory after building:
 ./bin/telora
 ```
 
+## Finding Your First Task
+
+A great place to start is by looking at our project roadmap and open tasks.
+
+- **[TODO.md](TODO.md)**: This file lists planned features, known bugs, and ideas for improvement. It's the best place to find a task to work on.
+- **[COMPATIBILITY.md](COMPATIBILITY.md)**: Before starting a new feature, please review our compatibility matrix. All changes must be verified against the supported Linux distributions to ensure Telora remains portable.
+
 ## Coding Standards
 
 - **Rust**: Follow idiomatic Rust patterns. Use `cargo fmt` and `cargo clippy`.

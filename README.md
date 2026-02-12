@@ -172,6 +172,11 @@ The `telora` service manages the UI and requires `telora-daemon` (the audio engi
 
 For detailed development instructions, local installation to `~/.local`, and coding standards, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Project Documents
+
+- **[TODO.md](TODO.md)**: A list of planned features, ongoing tasks, and ideas for future development.
+- **[COMPATIBILITY.md](COMPATIBILITY.md)**: Detailed information on Linux distribution compatibility and the automated testing matrix.
+
 ## Users
 
 ### Persona-Based Suggestions
