@@ -172,6 +172,25 @@ The `telora` service manages the UI and requires `telora-daemon` (the audio engi
 
 For detailed development instructions, local installation to `~/.local`, and coding standards, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Users
+
+### Persona-Based Suggestions
+
+| Persona | Suggestion |
+| :--- | :--- |
+| **Non-Technical User** | "Make it a one-click install; I don't want to use the terminal." |
+| **DevOps** | "Automate the CUDA architecture detection in CI/CD." |
+| **Ciberseguridad** | "Daemon runs as user; ensure socket permissions (0600) are strictly enforced." |
+| **Sponsorship** | "Focus on the 'Privacy-First' aspect as a selling point against cloud APIs." |
+| **Developer** | "Decouple the GUI from the business logic for easier testing." |
+
+### User-Type Specific Features
+
+- **Students**: "Lecture Mode" for long-form recordings (30+ mins) saved directly to Markdown.
+- **Office Workers**: "Template Filler" for voice-activated form completion.
+- **Power Users**: Custom "Initial Prompts" to help Whisper understand technical jargon or specific names.
+- **Multilingual Users**: A quick-toggle shortcut to switch between primary and secondary languages.
+
 ## License
 
 [GNU AFFERO | Version 3](LICENSE)
