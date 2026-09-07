@@ -266,6 +266,19 @@ jobs:
     permissions:
       contents: read
     needs: [verify-tag-reachability, verify-tag-signature]
+    env:
+      # candle-kernels (pulled in transitively when `cuda-qwen3asr`
+      # is enabled on voxora-bridge) calls `nvidia-smi` to
+      # auto-detect the GPU compute capability. The GH-hosted
+      # Ubuntu 24.04 runner has `nvidia-cuda-toolkit` (CUDA 12.0)
+      # but no NVIDIA driver, so `nvidia-smi` is missing and
+      # `bindgen_cuda` panics. Pin the arch explicitly: sm_80
+      # (Ampere) is the lowest arch candle's WMMA kernels (BF16
+      # fragments in `src/moe/moe_wmma*.cu`) compile against and
+      # is supported by CUDA 12.0. The binary never executes on
+      # CI; only the compile path matters here. Mirrors the same
+      # fix in `ci.yml` (env block, top of file).
+      CUDA_COMPUTE_CAP: "80"
     steps:
       - name: Checkout at pinned tag SHA
         # Pinning to the immutable commit SHA (resolved by
