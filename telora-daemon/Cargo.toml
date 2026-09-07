@@ -14,11 +14,13 @@ rust-version.workspace = true
 # `AsrError`, `ModelDir`) is reachable via `voxora_bridge::*`
 # without pulling the deprecated `voxora-core` shim.
 #
-# `cuda-whisper` enables ggml-cuda for whisper.cpp (Pascal sm_61+ OK).
-# We deliberately leave `cuda-qwen3asr` off: candle's WMMA kernels
-# require sm_70+ (Volta), so the qwen3-asr backend stays on CPU on
-# Pascal and older. Bump to `cuda` (umbrella) on sm_70+ hardware.
-voxora-bridge = { workspace = true, features = ["cuda-whisper"] }
+# `cuda-whisper` enables ggml-cuda for whisper.cpp (Pascal sm_50+ OK).
+# `cuda-qwen3asr` enables candle's CUDA path for qwen3-asr (sm_70+ / Volta
+# or newer — candle's WMMA kernels need Volta). On older hardware the
+# qwen3-asr engine falls back to CPU at runtime; the binary keeps both
+# backends compiled in so Volta+ users get GPU acceleration out of the
+# box without editing the manifest.
+voxora-bridge = { workspace = true, features = ["cuda-whisper", "cuda-qwen3asr"] }
 # voxora-registry 0.5 owns the canonical resolution path
 # (`Registry::resolve(&ModelId::parse(id), &opts) -> ResolvedModel`)
 # the daemon goes through so it never has to lex-sort `*.bin`
