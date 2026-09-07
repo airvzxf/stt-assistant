@@ -98,17 +98,16 @@ rust-version = "1.88"
 # the daemon's HF id path inherits the upstream HF 3-segment
 # hardening from voxora 0.4.3 / #102.
 #
-# telora-daemon pulls voxora-bridge 0.5 with the `cuda-whisper`
-# feature (see telora-daemon/Cargo.toml) to enable GPU-accelerated
-# whisper.cpp on Pascal sm_61+ hardware; qwen3-asr stays on CPU
-# because candle's WMMA kernels require sm_70+. voxora-bridge
-# also exposes `cuda-qwen3asr` (sm_70+ only), `metal`, `vulkan`,
-# `local`, `registry`, and `parity` features; telora deliberately
-# sticks to `cuda-whisper` only — the per-engine hardware split
-# exists so operators on Pascal hardware keep the qwen3-asr path
-# on CPU. The cross-engine hardware matrix (CUDA / Metal / Vulkan
-# per engine) is documented at
-# https://github.com/airvzxf/voxora/blob/main/docs/GPU_SUPPORT.md
+# telora-daemon pulls voxora-bridge 0.5 with the `cuda-whisper` and
+# `cuda-qwen3asr` features (see telora-daemon/Cargo.toml) so both
+# backends are compiled in by default. `cuda-whisper` covers
+# whisper.cpp on Pascal sm_50+; `cuda-qwen3asr` covers qwen3-asr on
+# Volta sm_70+ (candle's WMMA kernels need Volta — older hardware
+# transparently falls back to CPU at runtime). voxora-bridge also
+# exposes `cuda` (umbrella), `metal`, `vulkan`, `local`, `registry`,
+# and `parity` features for downstream consumers. The cross-engine
+# hardware matrix (CUDA / Metal / Vulkan per engine) is documented
+# at https://github.com/airvzxf/voxora/blob/main/docs/GPU_SUPPORT.md
 # (airvzxf/voxora#55 / EPIC #117).
 #
 # telora-models now depends on `voxora-traits` directly (instead
