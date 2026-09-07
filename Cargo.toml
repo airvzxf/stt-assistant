@@ -16,7 +16,17 @@ members = ["telora-common", "telora-daemon", "telora-gui", "telora-ctl", "telora
 #     telora-daemon / telora-models (closes #145, EPIC #148
 #     adopted from voxora 0.5.3).
 # No breaking API change for operators; no config-key churn.
-version = "0.5.0"
+#
+# Patch bump 0.5.0 → 0.5.1 (closes #151). Enables `cuda-qwen3asr`
+# on voxora-bridge in telora-daemon so Volta+ NVIDIA hosts get
+# GPU-accelerated Qwen3-ASR out of the box, instead of the previous
+# default that silently pinned qwen3-asr to CPU on every published
+# binary (telora-bin AUR package, GitHub Release artefacts). candle's
+# WMMA kernels still require sm_70+; on older hardware the runtime
+# device picker falls back to CPU, so Pascal / AMD / no-GPU hosts
+# are unaffected. No new public API surface, no config-key churn,
+# no operator-visible change for any non-Qwen3-ASR user.
+version = "0.5.1"
 edition = "2024"
 # Pinned to voxora-bridge 0.4.2+ / 0.5.x's MSRV as published on
 # crates.io (voxora-bridge 0.3+ bumped the MSRV to 1.86; the 0.4.2
