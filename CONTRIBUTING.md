@@ -57,6 +57,74 @@ The recommended way to build is using the provided script, which ensures a consi
 ./scripts/build
 ```
 
+#### 3.1. Building on hosts without a CUDA-capable GPU (or below `sm_70`)
+
+If `cargo build --release --workspace --bins --locked` fails while
+compiling `candle-kernels v0.9.2` with a `bindgen_cuda` panic on
+the missing `nvidia-smi` binary, the build is failing before it
+ever reaches telora's source. It happens on three classes of host:
+
+1. **No NVIDIA driver installed.** `bindgen_cuda::compute_cap()`
+   shells out to `nvidia-smi` to auto-detect the GPU compute
+   capability, and `nvidia-smi` is missing because only the CUDA
+   toolkit (`nvidia-cuda-toolkit`) is installed.
+2. **NVIDIA GPU below `sm_70` (Pascal and older).** Even with the
+   driver installed, candle's WMMA BF16 kernels in
+   `candle-kernels/src/moe/moe_wmma*.cu` require Volta or newer; the
+   auto-detected `sm_61` (or `sm_50`/`sm_60`) makes nvcc refuse to
+   compile the BF16 WMMA fragments.
+3. **nvcc 12.x + libstdc++ 16 (gcc 16 default on Arch rolling).**
+   Even after pinning the arch, nvcc's bundled frontend trips on
+   the new `<type_traits>` internals (`__is_invocable`,
+   `__is_pointer`, `__is_volatile`, …) shipped with libstdc++ 16
+   and panics with "type name is not allowed".
+
+These three failure modes hit every operator who tries to build
+telora locally on a Pascal laptop, on a CI runner without a GPU,
+or on a bleeding-edge distro. CI works around them by pinning
+`CUDA_COMPUTE_CAP=80` in `.github/workflows/{ci,release}.yml`.
+The same override works locally — two ways:
+
+**A. Inline environment variables** (ephemeral, no project file
+changes; what the maintainer uses during local development):
+
+```bash
+CUDA_COMPUTE_CAP=80 NVCC_CCBIN=/usr/bin/gcc-14 \
+  cargo build --release --workspace --bins --locked
+```
+
+`sm_80` (Ampere) is the lowest arch candle's WMMA BF16 kernels
+compile against and is supported by `nvidia-cuda-toolkit` 12.x on
+Ubuntu / Arch. `gcc-14` (or any `gcc ≤ 15`) is the host compiler
+nvcc 12.x speaks natively; skip the `NVCC_CCBIN` override on
+distros where the system gcc is still in the 13–15 range.
+
+**B. Per-developer `.cargo/config.toml`** (persistent for the
+project, no Cargo.toml change; useful when the same override is
+needed on every `cargo` invocation):
+
+```toml
+# .cargo/config.toml  (NOT committed — see `.gitignore`)
+[env]
+CUDA_COMPUTE_CAP = "80"
+NVCC_CCBIN = "/usr/bin/gcc-14"
+```
+
+Cargo's `[env]` block propagates to build scripts, rustc and the
+cargo invocation itself, so every subsequent `cargo build`,
+`cargo test`, `cargo clippy` picks the override up without
+needing to set it on the command line. The file is intentionally
+gitignored (`.cargo/config.toml` entry in `.gitignore`) because
+the values are machine-specific; the project-level
+`CUDA_COMPUTE_CAP` pin in `.github/workflows/{ci,release}.yml`
+stays as the canonical shared setting.
+
+If the build still fails after applying either workaround, the
+panic message + `cargo build --verbose` output is the diagnostic
+the maintainer needs. Do **not** open an issue without those two
+artifacts — `bindgen_cuda`'s error messages are exact and the
+nvcc invocation line that panicked is in the same output.
+
 ### 4. Local Testing
 You can run the binaries directly from the `bin/` directory after building:
 ```bash
