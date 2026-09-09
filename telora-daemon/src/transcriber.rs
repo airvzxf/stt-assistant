@@ -45,10 +45,11 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow};
-use log::info;
+use cudarc::driver::CudaContext;
+use log::{info, warn};
 use voxora_bridge::{
-    AsrEngine, EngineFamily, HuggingFaceSource, ModelSource, ResolveOptions, TranscribeOptions,
-    WhisperEngine,
+    AsrEngine, Device, EngineFamily, HuggingFaceSource, ModelSource, ResolveOptions,
+    TranscribeOptions, WhisperEngine,
 };
 use voxora_registry::{ModelId, Registry, RegistryHfExt};
 
@@ -218,19 +219,42 @@ impl BridgeTranscriber {
                 )
             }
             EngineFamily::Qwen3Asr => {
-                // `QwenAsrEngine::from_hf` owns the `tokenizer.json`
-                // synthesis that no other path exposes, so we keep
-                // using it for the engine load. The registry-
-                // resolved dir is the source of truth for the
-                // surfaced path (it is what the status response
-                // reports to the GUI).
                 refuse_if_symlink(&dir.path)?;
-                let engine =
+                // Pick the device based on the local GPU's compute
+                // capability. candle's WMMA BF16 kernels
+                // (`candle-kernels/src/moe/moe_wmma*.cu`) target
+                // sm_70+ (Volta); the CI-built telora-daemon
+                // binary embeds sm_80 SASS for those kernels, and
+                // `qwen3_asr::best_device()` does not know about
+                // this floor — it picks CUDA if any NVIDIA driver
+                // is present, then panics at first inference with
+                // `CUDA_ERROR_INVALID_PTX` on a Pascal sm_61 host.
+                // Whisper is unaffected because ggml-cuda ships
+                // forward-compat PTX in addition to SASS.
+                let device = pick_qwen3asr_device();
+                let engine = if device.is_cpu() {
+                    // CPU path: bypass voxora's `from_hf` (which
+                    // always calls `best_device()` and would re-pick
+                    // CUDA) and use `load_with_device` directly.
+                    // voxora's tokenizer-synthesis step is private
+                    // to voxora-qwen3asr; calling `from_hf` once
+                    // writes `tokenizer.json` to disk before
+                    // attempting the engine load, so even if the
+                    // CUDA load fails on this host the cache is
+                    // shaped correctly for the CPU retry.
+                    let _ =
+                        voxora_bridge::QwenAsrEngine::from_hf(hf_source.as_ref(), model_id, &opts)
+                            .await;
+                    voxora_bridge::QwenAsrEngine::load_with_device(&dir.path, device).with_context(
+                        || format!("failed to load Qwen3-ASR engine for {model_id:?}"),
+                    )?
+                } else {
                     voxora_bridge::QwenAsrEngine::from_hf(hf_source.as_ref(), model_id, &opts)
                         .await
                         .with_context(|| {
                             format!("failed to load Qwen3-ASR engine for {model_id:?}")
-                        })?;
+                        })?
+                };
                 (
                     Arc::new(engine) as Arc<dyn AsrEngine>,
                     dir.path.display().to_string(),
@@ -417,6 +441,74 @@ fn refuse_if_symlink(p: &Path) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+/// Pick the best candle device for the qwen3-asr engine based on the
+/// local GPU compute capability.
+///
+/// candle-kernels' WMMA BF16 kernels in
+/// `candle-kernels/src/moe/moe_wmma*.cu` target sm_70+ (Volta). The
+/// CI-built telora-daemon binary embeds sm_80 SASS for those kernels;
+/// on a Pascal sm_61 host the driver rejects the load at first
+/// inference with `CUDA_ERROR_INVALID_PTX` because the SASS uses
+/// instructions the local GPU does not implement. `best_device()`
+/// does not know about this floor — it only checks whether the CUDA
+/// driver is reachable, not whether the bundled SASS will execute —
+/// so without this probe a Pascal laptop would load the engine
+/// cleanly and only blow up at first `transcribe()`.
+///
+/// Whisper's CUDA path is unaffected: ggml-cuda ships
+/// forward-compat PTX alongside its SASS, so JIT falls back to the
+/// local ISA without the operator touching anything.
+///
+/// Returns `Device::Cpu` on any of:
+/// - no NVIDIA driver (CUDA context creation fails),
+/// - the probe fails for any reason (treated as "can't tell, fall back"),
+/// - the GPU's compute capability is below sm_70,
+/// - the device creation succeeds but `Device::new_cuda(0)` later
+///   fails (out of VRAM, exclusivity conflict, etc.).
+fn pick_qwen3asr_device() -> Device {
+    let ctx = match CudaContext::new(0) {
+        Ok(c) => c,
+        Err(e) => {
+            info!("no local CUDA context ({e}); qwen3-asr will use CPU");
+            return Device::Cpu;
+        }
+    };
+    let (major, minor) = match ctx.compute_capability() {
+        Ok(cc) => cc,
+        Err(e) => {
+            warn!(
+                "could not query local CUDA compute capability ({e}); \
+                 qwen3-asr will use CPU"
+            );
+            return Device::Cpu;
+        }
+    };
+    if major < 7 {
+        warn!(
+            "local GPU compute capability is sm_{major}.{minor}, below candle's WMMA \
+             BF16 floor (sm_70 / Volta); forcing CPU for qwen3-asr. The CI-built \
+             telora-daemon binary embeds sm_80 SASS for qwen3-asr's CUDA path that \
+             cannot execute on this hardware. Whisper keeps its GPU path because \
+             ggml-cuda ships forward-compat PTX. To re-enable GPU Qwen3-ASR on this \
+             host you would need a Volta-or-newer GPU; rebuilds with \
+             CUDA_COMPUTE_CAP=61 cannot compile the WMMA kernels and produce an \
+             unusable binary."
+        );
+        return Device::Cpu;
+    }
+    // GPU is new enough. Let candle actually create the device —
+    // it can still fail for VRAM / exclusivity reasons unrelated to
+    // compute_capability, in which case we fall back to CPU rather
+    // than propagate the error.
+    Device::new_cuda(0).unwrap_or_else(|e| {
+        warn!(
+            "local GPU is sm_{major}.{minor} but Device::new_cuda(0) failed ({e}); \
+             qwen3-asr will use CPU"
+        );
+        Device::Cpu
+    })
 }
 
 #[cfg(test)]

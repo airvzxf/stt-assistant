@@ -21,6 +21,18 @@ rust-version.workspace = true
 # backends compiled in so Volta+ users get GPU acceleration out of the
 # box without editing the manifest.
 voxora-bridge = { workspace = true, features = ["cuda-whisper", "cuda-qwen3asr"] }
+# `cudarc` is the CUDA driver binding candle-core uses under the
+# `cuda` feature. Pulled in transitively today; we re-list it here
+# directly so `transcriber::pick_qwen3asr_device` can call
+# `cudarc::driver::CudaDevice::compute_capability()` at startup
+# and force CPU when the local GPU is below candle's WMMA floor
+# (sm_70). Without this direct dep, candle-core's choice of cudarc
+# version is hidden behind a transitive pin and we would either
+# have to round-trip through candle's public API (which doesn't
+# expose compute_capability) or shell out to `nvidia-smi`. Version
+# pinned to whatever candle-core 0.9.2 currently uses; bump
+# alongside candle-core in the voxora-bump PR.
+cudarc = "0.19"
 # voxora-registry 0.5 owns the canonical resolution path
 # (`Registry::resolve(&ModelId::parse(id), &opts) -> ResolvedModel`)
 # the daemon goes through so it never has to lex-sort `*.bin`
